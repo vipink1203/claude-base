@@ -1,0 +1,551 @@
+# Claude Code Bootstrap — User Guide
+
+A practical guide to getting the most out of your bootstrapped Claude Code project. This covers everything from your first session to advanced multi-agent workflows.
+
+---
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Understanding the Agent System](#understanding-the-agent-system)
+  - [Auto Agents (run every turn)](#auto-agents-run-every-turn)
+  - [Task Agents (user-invoked)](#task-agents-user-invoked)
+- [Invoking Agents](#invoking-agents)
+  - [Method 1: CLI (new terminal)](#method-1-cli-new-terminal)
+  - [Method 2: In-Session Delegation](#method-2-in-session-delegation)
+  - [Which method should I use?](#which-method-should-i-use)
+- [Identifying Agents](#identifying-agents)
+- [The Quality Pipeline](#the-quality-pipeline)
+  - [What happens on every edit](#what-happens-on-every-edit)
+  - [What happens at end of turn](#what-happens-at-end-of-turn)
+  - [The self-correcting loop](#the-self-correcting-loop)
+- [Model Allocation](#model-allocation)
+- [Workflows](#workflows)
+  - [Solo developer workflow](#solo-developer-workflow)
+  - [Team workflow](#team-workflow)
+  - [CI/CD integration](#cicd-integration)
+- [Context Management](#context-management)
+- [Customization](#customization)
+  - [Changing agent models](#changing-agent-models)
+  - [Adding new agents](#adding-new-agents)
+  - [Modifying hooks](#modifying-hooks)
+  - [Adding MCP servers](#adding-mcp-servers)
+- [Troubleshooting](#troubleshooting)
+- [FAQ](#faq)
+
+---
+
+## Quick Start
+
+After running `./claude-code-bootstrap.sh`, start a session:
+
+```bash
+cd your-project
+claude
+```
+
+That's it. The auto agents (code reviewer + security reviewer) are already active. They run silently at the end of every turn — if they find critical issues, Claude will self-correct before finishing.
+
+You now have access to several agents you can invoke on demand. Try one:
+
+```
+> Use the qa agent to check test coverage
+```
+
+You'll see something like:
+
+```
+═══════════════════════════════════════════
+🧪 QA AGENT (model: sonnet)
+═══════════════════════════════════════════
+```
+
+This confirms which agent is running and on what model.
+
+---
+
+## Understanding the Agent System
+
+Your project comes with **5 agents** organized into two categories:
+
+### Auto Agents (run every turn)
+
+These agents run automatically via **Stop hooks** at the end of every Claude turn. You don't need to invoke them — they're always watching.
+
+| Agent | Model | What it does |
+|-------|-------|-------------|
+| 🔍 **code-reviewer** | Sonnet | Reviews changed files for code quality, OWASP Top 10 security, performance issues. Blocks on critical findings. |
+| 🛡️ **security-reviewer** | Haiku | Runs Bandit SAST, dependency audit, secret scanning, data flow analysis. Reports only high-confidence, exploitable findings. |
+
+**How they work:**
+
+1. You write code and Claude finishes its turn
+2. Stop hooks trigger lint/type checks (tsc, ESLint, Ruff)
+3. Code reviewer scans for quality issues
+4. Security reviewer scans for vulnerabilities
+5. If either finds **Critical** issues → blocks the turn (exit code 2) → Claude sees the error and fixes it
+6. If only Warnings/Suggestions → turn completes, report is printed
+
+### Task Agents (user-invoked)
+
+These agents run **only when you ask for them**. They each specialize in a specific workflow.
+
+| Agent | Model | When to use | What it does |
+|-------|-------|-------------|-------------|
+| 🚀 **ship** | Sonnet | Ready to commit and push | Creates feature branch, stages files, generates conventional commit message, pushes, opens PR via `gh` |
+| 🧪 **qa** | Sonnet | Before shipping | Runs tests (pytest/vitest), analyzes coverage, generates missing tests, runs E2E if Playwright is available |
+| 🎨 **ui-review** | Sonnet | After frontend changes | Reviews accessibility, responsive design, shadcn/ui patterns, motion.dev animations, takes Playwright screenshots |
+
+---
+
+## Invoking Agents
+
+There are **two ways** to invoke task agents. Understanding the difference is key.
+
+### Method 1: CLI (new terminal)
+
+Open a **separate terminal** and run:
+
+```bash
+claude --agent ship
+claude --agent qa
+claude --agent ui-review
+```
+
+**What happens:** This starts an entirely new Claude session dedicated to that agent. The agent gets:
+- Its own context window (clean, focused)
+- The model specified in its config (e.g., Sonnet)
+- Only the tools listed in its frontmatter
+- Full access to the project filesystem
+
+**Best for:**
+- Running agents without interrupting your main coding session
+- Long-running tasks (full test suite, comprehensive PR review)
+- When you want a clean context devoted entirely to one job
+
+### Method 2: In-Session Delegation
+
+From within your **existing Claude session**, ask naturally:
+
+```
+> Use the ship agent to commit and open a PR
+> Have the qa agent run the test suite
+> Use the code-reviewer to look at my recent changes
+> Run the ui-review agent on the dashboard component
+```
+
+**What happens:** Claude spawns a **subagent** via the Task tool. The subagent:
+- Gets its own isolated context window
+- Uses the model from its config (e.g., Sonnet for `ship`, Haiku for `security-reviewer`)
+- Runs with its restricted tool set
+- Returns a summary to your main session when done
+
+Your main session **keeps its context intact** — the subagent's work doesn't pollute your conversation history.
+
+**Best for:**
+- Quick checks mid-session ("run qa before I continue")
+- Chaining agents ("review, then ship")
+- When you don't want to switch terminals
+
+### Which method should I use?
+
+| Scenario | Recommended Method |
+|----------|--------------------|
+| Deep focus coding session, ready to ship | **CLI** — open Terminal 2, run `claude --agent ship` |
+| Quick test check before continuing work | **In-session** — "use the qa agent to run tests" |
+| Comprehensive UI accessibility audit | **CLI** — `claude --agent ui-review` (lots of output) |
+| Chain review → test → ship in one flow | **In-session** — ask for each agent sequentially |
+| CI/CD pipeline automation | **CLI headless** — `claude -p --agent qa "run tests"` |
+
+---
+
+## Identifying Agents
+
+Every agent prints an **identification banner** when it starts, so you always know:
+- **Which** agent is running
+- **What model** it's using
+
+```
+═══════════════════════════════════════════
+🚀 SHIP AGENT (model: sonnet)
+═══════════════════════════════════════════
+```
+
+Here's the full roster:
+
+| Banner | Agent | Model | Trigger |
+|--------|-------|-------|---------|
+| 🔍 CODE REVIEWER | `code-reviewer` | Sonnet | Auto (every turn) |
+| 🛡️ SECURITY REVIEWER | `security-reviewer` | Haiku | Auto (every turn) |
+| 🚀 SHIP AGENT | `ship` | Sonnet | User-invoked |
+| 🧪 QA AGENT | `qa` | Sonnet | User-invoked |
+| 🎨 UI REVIEW AGENT | `ui-review` | Sonnet | User-invoked |
+
+If you see no banner, the **main agent** (Opus) is working — not a subagent.
+
+---
+
+## The Quality Pipeline
+
+Bootstrap sets up a multi-layered quality pipeline using Claude Code's **hooks system**. Every code change passes through deterministic checks that Claude cannot bypass.
+
+### What happens on every edit
+
+When Claude writes or edits a file, **PostToolUse hooks** fire immediately:
+
+```
+Edit file → Prettier auto-format → ESLint auto-fix → ✅ or ❌ back to Claude
+                                 → Ruff check + format → ✅ or ❌ back to Claude
+```
+
+- **JavaScript/TypeScript** files: Prettier formats, ESLint fixes what it can
+- **Python** files: Ruff checks and formats
+- If errors remain after auto-fix, they're sent back to Claude (exit code 2) and Claude fixes them
+
+### What happens at end of turn
+
+When Claude finishes its turn, **Stop hooks** run a comprehensive check:
+
+```
+Turn complete → tsc --noEmit (TypeScript check)
+             → ESLint full project
+             → Ruff check full project
+             → 🔍 Code Reviewer agent
+             → 🛡️ Security Reviewer agent
+             → ✅ Turn allowed to complete
+               or
+             → ❌ Errors sent back, Claude fixes and retries
+```
+
+### The self-correcting loop
+
+The key mechanism is **exit code 2**. When any hook returns exit code 2:
+
+1. Claude's action is **blocked**
+2. The error output is **fed back** to Claude as feedback
+3. Claude reads the errors, **fixes the issues**, and retries
+4. The hook runs again on the new code
+5. This repeats until all checks pass
+
+This means Claude literally **cannot** finish a turn with:
+- Lint errors
+- Type errors
+- Critical security vulnerabilities
+- Hardcoded secrets
+
+### What hooks block before Claude even writes
+
+**PreToolUse hooks** prevent dangerous operations:
+
+| Protection | What it blocks |
+|-----------|---------------|
+| Protected files | Writes to `.env`, `.secret`, `package-lock.json`, `.git/`, `node_modules/` |
+| Hardcoded secrets | AWS keys (`AKIA`), API keys (`sk-`, `ghp_`), Slack tokens (`xox`) |
+| Branch protection | Direct `git push` to `main` or `master` |
+
+---
+
+## Model Allocation
+
+Bootstrap uses a deliberate model allocation strategy to balance quality and cost:
+
+| Role | Model | Why |
+|------|-------|-----|
+| **Main coding agent** | Opus (your default) | Complex reasoning, architecture, code generation |
+| **Code reviewer** (auto) | Sonnet | Good for pattern matching, cheaper per turn |
+| **Security reviewer** (auto) | Haiku | Fast scanning, regex matching — runs every turn so cost matters |
+| **ship, qa, ui-review** (on demand) | Sonnet | Workflow execution with tool access |
+
+**Only your main coding agent uses Opus.** All other agents run on cheaper models, enforced by the `model:` field in each agent's frontmatter. This keeps costs manageable while maintaining quality where it matters.
+
+**Estimated cost:** ~$6/developer/day or $100–200/month with typical usage.
+
+---
+
+## Workflows
+
+### Solo developer workflow
+
+**Option A: Multi-terminal (recommended for larger features)**
+
+```bash
+# Terminal 1: main coding session (Opus)
+claude
+> Implement user profile page with avatar upload
+  ... Claude codes, auto-review runs at end of turn ...
+  ... if critical issues found, Claude auto-fixes ...
+
+# Terminal 2: review & ship (Sonnet)
+claude --agent ui-review    # reviews a11y, responsive, component patterns
+claude --agent qa            # runs tests, generates missing coverage
+claude --agent ship          # creates branch, commits, pushes, opens PR
+  # → PR: https://github.com/you/repo/pull/42
+```
+
+**Option B: Single-session (great for quick iterations)**
+
+```
+> Implement user profile page with avatar upload
+  ... Claude codes, auto-review runs at end of turn ...
+
+> Use the qa agent to run tests and check coverage
+  ═══════════════════════════════════════════
+  🧪 QA AGENT (model: sonnet)
+  ═══════════════════════════════════════════
+  Tests Run: 47 passed, 0 failed
+  Coverage: 83% (profile.tsx: 91%, avatar-upload.tsx: 76%)
+  Generated: tests/profile.test.tsx
+
+> Use the ship agent to commit and open a PR
+  ═══════════════════════════════════════════
+  🚀 SHIP AGENT (model: sonnet)
+  ═══════════════════════════════════════════
+  Branch: feat/user-profile-avatar
+  Commit: feat(profile): add user profile page with avatar upload
+  PR: https://github.com/you/repo/pull/42
+```
+
+### Team workflow
+
+For teams, the bootstrapped configuration is committed to git so everyone gets the same quality pipeline:
+
+```
+.claude/
+├── agents/              # Shared agent definitions
+├── hooks/               # Shared quality hooks
+├── rules/               # Shared coding rules
+├── settings.json        # Shared hooks + permissions
+└── settings.local.json  # Personal overrides (gitignored)
+```
+
+Each developer can add personal overrides in `.claude/settings.local.json` without affecting the team config.
+
+### CI/CD integration
+
+Use Claude Code's headless mode (`-p` flag) in CI pipelines:
+
+```bash
+# In GitHub Actions or similar
+claude -p --agent qa "Run the full test suite and report results"
+claude -p --agent security-reviewer "Scan all changed files for security issues"
+```
+
+The official [`anthropics/claude-code-action@v1`](https://github.com/anthropics/claude-code-action) GitHub Action supports responding to `@claude` mentions in PRs and issues.
+
+---
+
+## Context Management
+
+Context is Claude Code's most critical resource. Performance degrades non-linearly as the 200K token window fills.
+
+### Best practices
+
+| Practice | Why |
+|----------|-----|
+| Use `/clear` between unrelated tasks | Stale context wastes tokens on every subsequent message |
+| Stop at ~75% context usage | The final 20% of context produces 80% of errors |
+| Use `/rename` before clearing | So you can `/resume` the session later if needed |
+| Keep CLAUDE.md under 150 lines | Every line is reprocessed with each message |
+| Delegate to subagents | They get their own clean context windows |
+
+### The "Document & Clear" pattern
+
+For complex features spanning multiple sessions:
+
+```
+> Write your implementation plan to docs/plan-avatar-upload.md
+  ... Claude dumps its plan and progress ...
+
+> /rename avatar-upload
+> /clear
+
+> Read docs/plan-avatar-upload.md and continue implementing
+  ... fresh session with clean context, full plan preserved ...
+```
+
+---
+
+## Customization
+
+### Changing agent models
+
+Edit the `model:` field in any agent's frontmatter:
+
+```yaml
+# .claude/agents/code-reviewer.md
+---
+model: sonnet    # change to "haiku", "opus", or "inherit"
+---
+```
+
+Available values:
+- `sonnet` — balanced quality/cost
+- `opus` — highest quality, highest cost
+- `haiku` — fastest, cheapest
+- `inherit` — uses whatever model your main session uses
+
+### Adding new agents
+
+Create a new `.md` file in `.claude/agents/`:
+
+```yaml
+# .claude/agents/docs-writer.md
+---
+name: docs-writer
+description: Documentation agent. Use when the user wants to generate or update documentation, READMEs, or API docs.
+model: sonnet
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Edit
+  - Write
+---
+
+**FIRST:** Always begin your output with this identification banner:
+\```
+═══════════════════════════════════════════
+📝 DOCS WRITER (model: sonnet)
+═══════════════════════════════════════════
+\```
+
+You are a documentation specialist. When invoked, analyze the codebase and generate
+or update documentation...
+```
+
+**Tips for good agent definitions:**
+- Write **action-oriented descriptions** — "Use when the user wants to..." helps Claude's auto-delegation match correctly
+- Include the **identification banner** so users can see which agent is running
+- Restrict **tools** to only what the agent needs (principle of least privilege)
+- Set the **model** explicitly — don't rely on `inherit` for specialized agents
+
+### Modifying hooks
+
+Edit `.claude/settings.json` to change what runs on each event:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [{
+          "type": "command",
+          "command": "your-custom-command-here"
+        }]
+      }
+    ]
+  }
+}
+```
+
+Hook types:
+- **PreToolUse** — runs *before* Claude writes (block dangerous actions)
+- **PostToolUse** — runs *after* each edit (auto-format, lint)
+- **Stop** — runs at *end of turn* (comprehensive validation)
+- **Notification** — runs on permission prompts (audio alerts)
+
+### Adding MCP servers
+
+Edit `.mcp.json` to add new MCP servers:
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    },
+    "postgres": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost:5432/myapp"]
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp",
+      "headers": {"Authorization": "Bearer ${GITHUB_PAT}"}
+    }
+  }
+}
+```
+
+---
+
+## Troubleshooting
+
+### Agent doesn't respond to in-session invocation
+
+**Symptom:** You say "use the ship agent" but Claude handles it directly instead of delegating.
+
+**Fix:** Be more explicit:
+```
+> Use the ship subagent to commit my changes
+> Delegate to the qa agent to run tests
+> Invoke the code-reviewer agent on the files I changed
+```
+
+If that doesn't work, check that the agent file exists in `.claude/agents/` and has a valid `description:` field in its frontmatter.
+
+### Hooks are running but not blocking issues
+
+**Symptom:** Lint errors get through even though hooks are configured.
+
+**Check:**
+1. Ensure the tools are installed (`npx eslint --version`, `ruff --version`)
+2. Run the hook command manually to see if it produces output
+3. Check that the hook exits with code 2 on errors (not code 1)
+
+### Auto agents produce too much noise
+
+**Symptom:** Code reviewer / security reviewer flag issues on every turn when you're just exploring.
+
+**Options:**
+1. Temporarily disable by editing `.claude/settings.json` — comment out the Stop hook agents
+2. Use `.claude/settings.local.json` for personal overrides (this file is gitignored):
+   ```json
+   {
+     "hooks": {
+       "Stop": []
+     }
+   }
+   ```
+
+### Context fills up too fast
+
+**Symptoms:** Quality degrades, Claude forgets earlier instructions, responses become generic.
+
+**Fix:**
+1. Run `/clear` between unrelated tasks
+2. Delegate heavy work to subagents (they don't consume your main context)
+3. Use `/cost` to monitor token usage
+4. Break large features into smaller sessions with the "Document & Clear" pattern
+
+---
+
+## FAQ
+
+**Q: Do auto agents cost money?**
+A: Yes. The code-reviewer (Sonnet) and security-reviewer (Haiku) each make API calls at the end of every turn. At typical usage (~$6/day), this is a small fraction of total cost. If cost is a concern, switch both to Haiku or disable them.
+
+**Q: Can I use agents from other projects?**
+A: Yes. You can place agents in `~/.claude/agents/` for user-level agents available in all projects, or use `claude --agents '{...}'` to define agents inline for a single session.
+
+**Q: Do subagents have access to my conversation history?**
+A: No. Subagents get their own isolated context window. They inherit `CLAUDE.md` project context, MCP servers, and skills, but **not** your conversation history.
+
+**Q: Can a subagent spawn other subagents?**
+A: No. Claude Code enforces a single-level delegation hierarchy — subagents cannot spawn sub-subagents.
+
+**Q: How do I know if the main agent or a subagent is responding?**
+A: All agents print an identification banner (e.g., `🚀 SHIP AGENT (model: sonnet)`). If you see no banner, it's your main agent responding.
+
+**Q: What's the difference between agents and skills?**
+A: **Agents** are subagents with their own context windows and tool sets — they run independently and return results. **Skills** are instruction files that Claude reads and follows within the current context — they don't spawn a separate agent.
+
+**Q: Can I run agents in the background?**
+A: Yes. Ask Claude to "run this in the background" or press `Ctrl+B` to background a running task. Background agents auto-deny permissions not pre-approved.
+
+**Q: How do I see all available agents?**
+A: Use the `/agents` command within a Claude session to view, create, edit, and delete agents.

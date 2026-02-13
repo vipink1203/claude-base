@@ -4,6 +4,8 @@ A single bash script that scaffolds [Claude Code](https://docs.anthropic.com/en/
 
 Based on the patterns from *The Definitive Guide to Automated Development Workflows with Claude Code*.
 
+> 📖 **New to Claude Code Bootstrap?** Start with the **[User Guide](USER_GUIDE.md)** for a complete walkthrough of agents, invocation methods, the quality pipeline, and best practices.
+
 ## What it does
 
 ```mermaid
@@ -210,13 +212,17 @@ Both agents run automatically at the end of every Claude turn. If either finds a
 
 ### Task Agents (user-invoked)
 
-| Agent | Model | How to invoke | What it does |
-|-------|-------|---------------|--------------|
-| **ship** | Sonnet | `claude --agent ship` | Verify branch, stage changes, conventional commit, push, create PR via `gh` |
-| **ui-review** | Sonnet | `claude --agent ui-review` | Component architecture, a11y, responsive design, motion.dev, Tailwind, Playwright screenshots |
-| **qa** | Sonnet | `claude --agent qa` | Run tests, analyze coverage, generate missing tests, E2E via Playwright, report blockers |
+| Agent | Model | CLI (new terminal) | In-session (natural language) | What it does |
+|-------|-------|-------------------|-------------------------------|-------------|
+| **ship** | Sonnet | `claude --agent ship` | `Use the ship agent to open a PR` | Verify branch, stage changes, conventional commit, push, create PR via `gh` |
+| **ui-review** | Sonnet | `claude --agent ui-review` | `Have the ui-review agent check my changes` | Component architecture, a11y, responsive design, motion.dev, Tailwind, Playwright screenshots |
+| **qa** | Sonnet | `claude --agent qa` | `Use the qa agent to check test coverage` | Run tests, analyze coverage, generate missing tests, E2E via Playwright, report blockers |
 
-Task agents run as **subagents on Sonnet**, keeping Opus reserved for the main coding session. Invoke them from the CLI or ask Claude to "run the ship agent" in conversation.
+Task agents run as **subagents on Sonnet**, keeping Opus reserved for the main coding session. Each agent prints an identification banner showing its name and model on startup.
+
+**Two invocation methods:**
+- **CLI** (`claude --agent <name>`) — starts a *new* session dedicated to that agent
+- **In-session** — ask Claude naturally within your coding session; it delegates to the subagent via the Task tool, keeping your main context intact
 
 ## Hooks explained
 
@@ -277,6 +283,10 @@ You can always edit `.mcp.json` later to add/remove servers.
 
 ## User Guide
 
+> 📖 **[Read the full User Guide →](USER_GUIDE.md)** for comprehensive documentation including workflows, context management, troubleshooting, and FAQ.
+
+Below is a quick reference. For detailed explanations, see the full guide.
+
 ### Getting started
 
 After bootstrapping, start Claude Code in your project:
@@ -315,6 +325,7 @@ All task agents run on **Sonnet** regardless of your main model setting.
 
 ### Typical development session
 
+**Option A: Multi-terminal workflow**
 ```bash
 # Terminal 1: main coding session (Opus)
 claude
@@ -328,6 +339,24 @@ claude --agent qa            # runs tests, generates missing coverage
 claude --agent ship          # creates branch, commits, pushes, opens PR
   # → PR: https://github.com/you/repo/pull/42
 ```
+
+**Option B: Single-session workflow (in-session delegation)**
+```
+> Implement user profile page with avatar upload
+  ... Claude codes, auto-review runs at end of turn ...
+> Use the qa agent to run tests and check coverage
+  ═══════════════════════════════════════════
+  🧪 QA AGENT (model: sonnet)
+  ═══════════════════════════════════════════
+  ... subagent runs tests, returns summary ...
+> Use the ship agent to commit and open a PR
+  ═══════════════════════════════════════════
+  🚀 SHIP AGENT (model: sonnet)
+  ═══════════════════════════════════════════
+  ... subagent commits, pushes, opens PR ...
+```
+
+In-session delegation runs the agent as a **subagent** — it gets its own context window, uses the model specified in its config, and returns a summary to your main session.
 
 ### How auto agents work
 

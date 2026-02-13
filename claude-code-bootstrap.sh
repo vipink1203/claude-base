@@ -428,7 +428,8 @@ Develop → [Auto: Code Review + Security Scan] → qa agent → ship agent
 - **Code Reviewer** — checks quality, OWASP Top 10, performance (blocks on critical)
 - **Security Reviewer** — SAST, dependency audit, secret scanning (blocks on critical)
 
-### User-invoked Skills"
+### User-invoked Agents
+**From a separate terminal (new session):**"
 
 if $HAS_FE; then
     CLAUDE_CONTENT+="
@@ -437,7 +438,12 @@ fi
 
 CLAUDE_CONTENT+="
 - \`claude --agent qa\` — Run tests, generate missing coverage, E2E validation
-- \`claude --agent ship\` — Stage, commit (conventional), push, create PR"
+- \`claude --agent ship\` — Stage, commit (conventional), push, create PR
+
+**From within an active session (subagent delegation):**
+- \`Use the qa agent to check test coverage\`
+- \`Use the ship agent to commit and open a PR\`
+- \`Have the code-reviewer look at my recent changes\`"
 
 write_file "CLAUDE.md" "$CLAUDE_CONTENT"
 
@@ -621,7 +627,7 @@ log_step "4/10 · Task agents"
 write_file_heredoc ".claude/agents/ship.md" <<'AGENT_SHIP'
 ---
 name: ship
-description: Stage, commit, push, and open a PR with conventional commit messages.
+description: Git shipping agent. Use when the user wants to commit, push, open a PR, or ship their changes. Stage, commit with conventional messages, push, and create pull requests.
 model: sonnet
 tools:
   - Read
@@ -631,6 +637,13 @@ tools:
 ---
 
 # Ship — Git Manager
+
+**FIRST:** Always begin your output with this identification banner:
+```
+═══════════════════════════════════════════
+🚀 SHIP AGENT (model: sonnet)
+═══════════════════════════════════════════
+```
 
 You are a Git Manager agent. Execute the following workflow:
 
@@ -667,7 +680,7 @@ if $HAS_FE; then
 write_file_heredoc ".claude/agents/ui-review.md" <<'AGENT_UI'
 ---
 name: ui-review
-description: Review frontend components for UX, accessibility, responsiveness, and design patterns.
+description: UI/UX review agent. Use when the user wants a frontend review, accessibility audit, responsive design check, or component architecture review.
 model: sonnet
 tools:
   - Read
@@ -677,6 +690,13 @@ tools:
 ---
 
 # UI Review — UX/UI Expert
+
+**FIRST:** Always begin your output with this identification banner:
+```
+═══════════════════════════════════════════
+🎨 UI REVIEW AGENT (model: sonnet)
+═══════════════════════════════════════════
+```
 
 You are a UX/UI Expert agent. Review frontend code for design quality, accessibility, and adherence to project conventions.
 
@@ -728,7 +748,7 @@ fi
 write_file_heredoc ".claude/agents/qa.md" <<'AGENT_QA'
 ---
 name: qa
-description: Run tests, generate missing coverage, and validate quality before shipping.
+description: QA and testing agent. Use when the user wants to run tests, check coverage, generate missing tests, or validate quality before shipping.
 model: sonnet
 tools:
   - Read
@@ -740,6 +760,13 @@ tools:
 ---
 
 # QA — Testing Expert
+
+**FIRST:** Always begin your output with this identification banner:
+```
+═══════════════════════════════════════════
+🧪 QA AGENT (model: sonnet)
+═══════════════════════════════════════════
+```
 
 You are a QA Expert agent. Run comprehensive testing and generate missing test coverage.
 
@@ -800,13 +827,20 @@ log_step "5/10 · Custom agents"
 write_file_heredoc ".claude/agents/code-reviewer.md" <<'AGENT_REVIEW'
 ---
 name: code-reviewer
-description: Auto code review — runs at end of every turn via Stop hook.
+description: Automatic code review agent. Proactively reviews code for quality, security, and performance. Use after writing or modifying code, or when the user asks for a code review.
 model: sonnet
 tools:
   - Read
   - Grep
   - Glob
 ---
+
+**FIRST:** Always begin your output with this identification banner:
+```
+═══════════════════════════════════════════
+🔍 CODE REVIEWER (model: sonnet)
+═══════════════════════════════════════════
+```
 
 You are a senior code reviewer that runs automatically at the end of every Claude turn. Your job is to catch issues before they accumulate.
 
@@ -857,7 +891,7 @@ AGENT_REVIEW
 write_file_heredoc ".claude/agents/security-reviewer.md" <<'AGENT_SEC'
 ---
 name: security-reviewer
-description: Auto security scan — runs at end of every turn via Stop hook.
+description: Automatic security scanning agent. Scans code for vulnerabilities, hardcoded secrets, SQL injection, and auth weaknesses. Use after code changes or when the user asks for a security review.
 model: haiku
 tools:
   - Read
@@ -865,6 +899,13 @@ tools:
   - Glob
   - Bash
 ---
+
+**FIRST:** Always begin your output with this identification banner:
+```
+═══════════════════════════════════════════
+🛡️ SECURITY REVIEWER (model: haiku)
+═══════════════════════════════════════════
+```
 
 You are an automated security reviewer that runs at the end of every Claude turn, parallel with the code reviewer. Focus on high-confidence, exploitable findings only.
 
