@@ -224,6 +224,11 @@ if $UNINSTALL; then
         ".claude/hooks/detect-secrets.sh"
         ".claude/hooks/build-notify.sh"
         ".claude/settings.json"
+        
+        # Legacy/renamed files from earlier versions
+        ".claude/skills/qa/SKILL.md"
+        ".claude/skills/ship/SKILL.md"
+        ".claude/skills/ui-review/SKILL.md"
     )
 
     # Show what will be removed
@@ -269,13 +274,28 @@ if $UNINSTALL; then
                 ".claude/rules/backend" \
                 ".claude/rules" \
                 ".claude/agents" \
+                ".claude/skills/qa" \
+                ".claude/skills/ship" \
+                ".claude/skills/ui-review" \
+                ".claude/skills" \
                 ".claude/hooks" \
                 ".claude"; do
-                if [[ -d "$PROJECT_DIR/$dir" ]] && [[ -z "$(ls -A "$PROJECT_DIR/$dir" 2>/dev/null)" ]]; then
-                    rmdir "$PROJECT_DIR/$dir"
-                    log_success "Removed empty directory ${CYAN}$dir/${NC}"
+                if [[ -d "$PROJECT_DIR/$dir" ]]; then
+                    # Try to remove empty dir
+                    rmdir "$PROJECT_DIR/$dir" 2>/dev/null && \
+                    log_success "Removed empty directory ${CYAN}$dir/${NC}" || true
                 fi
             done
+            
+            # Check if .claude still exists
+            if [[ -d "$PROJECT_DIR/.claude" ]]; then
+                echo ""
+                log_warn "Directory ${BOLD}.claude${NC} was not removed because it contains user files:"
+                # List files relative to project dir
+                (cd "$PROJECT_DIR" && find .claude -maxdepth 2 -not -path '*/.*')
+                echo ""
+                echo -e "  To remove everything, run: ${BOLD}rm -rf $PROJECT_DIR/.claude${NC}"
+            fi
 
             # Clean gitignore entries we added
             if [[ -f "$PROJECT_DIR/.gitignore" ]]; then
