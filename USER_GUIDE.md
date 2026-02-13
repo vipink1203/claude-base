@@ -6,6 +6,12 @@ A practical guide to getting the most out of your bootstrapped Claude Code proje
 
 ## Table of Contents
 
+- [Installation & Setup](#installation--setup)
+  - [Running the bootstrap script](#running-the-bootstrap-script)
+  - [Script options](#script-options)
+  - [Stack types](#stack-types)
+  - [What gets created](#what-gets-created)
+  - [Dry run & uninstall](#dry-run--uninstall)
 - [Quick Start](#quick-start)
 - [Understanding the Agent System](#understanding-the-agent-system)
   - [Auto Agents (run every turn)](#auto-agents-run-every-turn)
@@ -35,9 +41,123 @@ A practical guide to getting the most out of your bootstrapped Claude Code proje
 
 ---
 
+## Installation & Setup
+
+### Running the bootstrap script
+
+The simplest way to get started — auto-detects your stack and bootstraps the current directory:
+
+```bash
+./claude-code-bootstrap.sh
+```
+
+Or target a specific project directory:
+
+```bash
+./claude-code-bootstrap.sh ./my-project
+```
+
+### Script options
+
+| Option | Short | Description | Default |
+|--------|-------|-------------|---------|
+| `--stack STACK` | | Project type (see [Stack types](#stack-types) below) | `auto` |
+| `--db-name NAME` | `-d` | PostgreSQL database name (fullstack/backend only) | `myapp` |
+| `--db-port PORT` | `-p` | PostgreSQL port (fullstack/backend only) | `5432` |
+| `--skip-install` | `-s` | Generate config files only — skip npm/pip dependency installs | `false` |
+| `--dry-run` | `-n` | Preview what would be created without writing any files | `false` |
+| `--uninstall` | | Remove all files and configs created by this script | — |
+| `--help` | `-h` | Show help message | — |
+
+### Stack types
+
+The script tailors its output based on your project's stack. It auto-detects by default, but you can override:
+
+| Stack | What it sets up | Auto-detected when |
+|-------|----------------|-------------------|
+| `fullstack` | All rules, hooks, MCP servers for frontend + backend + DB | Both `frontend/` and `backend/` dirs exist |
+| `frontend` | Frontend-only rules/hooks (shadcn/ui, Tailwind, motion.dev, ESLint, Prettier) | `package.json` with `src/app/` or `next.config.*` found |
+| `backend` | Backend-only rules/hooks (FastAPI, SQLAlchemy, Ruff, pytest) | `pyproject.toml` or `requirements.txt` with `app/` dir found |
+| `generic` | Stack-agnostic: agents + secrets protection + git hooks only | No frontend or backend indicators detected |
+| `auto` | Detect from project files (default) | — |
+
+**Examples:**
+
+```bash
+# Explicit stack type
+./claude-code-bootstrap.sh --stack fullstack ./my-project
+./claude-code-bootstrap.sh --stack frontend ./my-nextjs-app
+./claude-code-bootstrap.sh --stack backend ./my-api
+./claude-code-bootstrap.sh --stack generic ./my-cli-tool
+
+# Custom database settings (fullstack/backend stacks)
+./claude-code-bootstrap.sh -d production_db -p 5433
+
+# Config files only — don't install linters/formatters
+./claude-code-bootstrap.sh --skip-install
+```
+
+### What gets created
+
+After running the script, your project will have:
+
+```
+your-project/
+├── CLAUDE.md                           # Root project context (tech stack, commands, rules)
+├── frontend/CLAUDE.md                  # Frontend conventions (if fullstack/frontend)
+├── backend/CLAUDE.md                   # Backend conventions (if fullstack/backend)
+├── .mcp.json                           # MCP server configs (Playwright, Postgres, Context7)
+└── .claude/
+    ├── settings.json                   # Hooks pipeline + permission deny lists
+    ├── agents/
+    │   ├── code-reviewer.md            # Auto: quality gate (Stop hook)
+    │   ├── security-reviewer.md        # Auto: SAST + secrets scan (Stop hook)
+    │   ├── ship.md                     # Task: git commit, push, PR
+    │   ├── qa.md                       # Task: tests, coverage, E2E
+    │   └── ui-review.md               # Task: a11y, responsive, UX (frontend stacks)
+    ├── hooks/
+    │   ├── end-of-turn-check.sh        # Lint/type check orchestrator
+    │   ├── detect-secrets.sh           # PreToolUse secret scanner
+    │   └── build-notify.sh             # Audio notification on build/test
+    └── rules/
+        ├── security.md                 # SQL injection, XSS, auth rules
+        ├── frontend/components.md      # shadcn/ui, Lucide, cn() patterns
+        ├── frontend/animations.md      # motion.dev conventions
+        ├── backend/api.md              # FastAPI async, Depends, Pydantic
+        └── backend/database.md         # SQLAlchemy 2.0, Alembic rules
+```
+
+The script also installs tooling dependencies (unless `--skip-install`):
+- **Frontend**: ESLint, Prettier
+- **Backend**: Ruff, Bandit, pip-audit
+- **Both**: The corresponding MCP servers
+
+### Dry run & uninstall
+
+**Preview before committing** — see exactly what would be created:
+
+```bash
+./claude-code-bootstrap.sh --dry-run
+./claude-code-bootstrap.sh --dry-run --stack frontend ./my-app
+```
+
+**Remove everything** — cleanly undoes the bootstrap:
+
+```bash
+# Preview what would be removed
+./claude-code-bootstrap.sh --uninstall --dry-run ./my-project
+
+# Remove all bootstrap files (with confirmation prompt)
+./claude-code-bootstrap.sh --uninstall ./my-project
+```
+
+Uninstall removes all generated files (`CLAUDE.md`, `.claude/`, `.mcp.json`) and cleans up empty directories. It does **not** uninstall packages (eslint, ruff, bandit, etc.) — remove those manually if needed.
+
+---
+
 ## Quick Start
 
-After running `./claude-code-bootstrap.sh`, start a session:
+After bootstrapping, start a Claude Code session in your project:
 
 ```bash
 cd your-project

@@ -1,5 +1,9 @@
 # Claude Code Bootstrap
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 A single bash script that scaffolds [Claude Code](https://docs.anthropic.com/en/docs/claude-code) best practices into any **Next.js + TailwindCSS + shadcn/ui + motion.dev** frontend with **Python/FastAPI/PostgreSQL** backend project.
 
 Based on the patterns from *The Definitive Guide to Automated Development Workflows with Claude Code*.
@@ -412,6 +416,13 @@ After running the script, you should:
 2. **Review `.claude/settings.json`** — Adjust hook commands if your lint/format tools differ.
 3. **Add GitHub MCP** — Add your GitHub PAT to `.mcp.json` if you want PR/issue integration.
 4. **Add personal overrides** — Create `.claude/settings.local.json` (gitignored) for personal preferences.
+
+## Community
+
+- **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get started.
+- **Code of Conduct**: We follow the [Contributor Covenant](CODE_OF_CONDUCT.md).
+- **Security**: Please report vulnerabilities privately. See [SECURITY.md](SECURITY.md).
+- **License**: Released under the [MIT License](LICENSE).
 
 ## References
 
