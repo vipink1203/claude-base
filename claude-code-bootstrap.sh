@@ -7,7 +7,7 @@ set -euo pipefail
 # Supports: fullstack (Next.js + FastAPI), frontend, backend, generic
 # ============================================================================
 
-VERSION="1.0.0"
+VERSION="2.0.0"
 SCRIPT_NAME="claude-code-bootstrap"
 
 # ── Colors & formatting ─────────────────────────────────────────────────────
@@ -84,6 +84,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Resolve to absolute path; if cd fails (dir doesn't exist yet), keep as-is for later mkdir
 PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd || echo "$PROJECT_DIR")"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
 
@@ -220,11 +221,17 @@ if $UNINSTALL; then
         ".claude/agents/ship.md"
         ".claude/agents/ui-review.md"
         ".claude/agents/qa.md"
+        ".claude/agents/analyst.md"
+        ".claude/agents/pm.md"
+        ".claude/agents/architect.md"
+        ".claude/agents/scrum-master.md"
+        ".claude/commands/project-help.md"
         ".claude/hooks/end-of-turn-check.sh"
         ".claude/hooks/detect-secrets.sh"
         ".claude/hooks/build-notify.sh"
         ".claude/settings.json"
-        
+        "docs/README.md"
+
         # Legacy/renamed files from earlier versions
         ".claude/skills/qa/SKILL.md"
         ".claude/skills/ship/SKILL.md"
@@ -268,33 +275,34 @@ if $UNINSTALL; then
                 log_success "Removed ${CYAN}$f${NC}"
             done
 
-            # Clean up empty directories left behind
-            for dir in \
-                ".claude/rules/frontend" \
-                ".claude/rules/backend" \
-                ".claude/rules" \
-                ".claude/agents" \
-                ".claude/skills/qa" \
-                ".claude/skills/ship" \
-                ".claude/skills/ui-review" \
-                ".claude/skills" \
-                ".claude/hooks" \
-                ".claude"; do
-                if [[ -d "$PROJECT_DIR/$dir" ]]; then
-                    # Try to remove empty dir
-                    rmdir "$PROJECT_DIR/$dir" 2>/dev/null && \
-                    log_success "Removed empty directory ${CYAN}$dir/${NC}" || true
+            # Clean up empty directories (deepest first)
+            # Use find to recursively remove all empty dirs under .claude/ and docs/
+            for top in ".claude" "docs"; do
+                if [[ -d "$PROJECT_DIR/$top" ]]; then
+                    # Remove empty dirs bottom-up
+                    find "$PROJECT_DIR/$top" -type d -empty -delete 2>/dev/null
+                    if [[ ! -d "$PROJECT_DIR/$top" ]]; then
+                        log_success "Removed empty directory ${CYAN}$top/${NC}"
+                    fi
                 fi
             done
-            
-            # Check if .claude still exists
+
+            # Check if .claude still exists (has user files)
             if [[ -d "$PROJECT_DIR/.claude" ]]; then
                 echo ""
-                log_warn "Directory ${BOLD}.claude${NC} was not removed because it contains user files:"
-                # List files relative to project dir
-                (cd "$PROJECT_DIR" && find .claude -maxdepth 2 -not -path '*/.*')
+                log_warn "Directory ${BOLD}.claude${NC} was not removed because it contains non-bootstrap files:"
+                (cd "$PROJECT_DIR" && find .claude -type f | sed 's/^/    /')
                 echo ""
                 echo -e "  To remove everything, run: ${BOLD}rm -rf $PROJECT_DIR/.claude${NC}"
+            fi
+
+            # Check if docs still exists
+            if [[ -d "$PROJECT_DIR/docs" ]]; then
+                echo ""
+                log_warn "Directory ${BOLD}docs${NC} was not removed because it contains user files:"
+                (cd "$PROJECT_DIR" && find docs -type f | sed 's/^/    /')
+                echo ""
+                echo -e "  To remove everything, run: ${BOLD}rm -rf $PROJECT_DIR/docs${NC}"
             fi
 
             # Clean gitignore entries we added
@@ -321,7 +329,7 @@ fi
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║ 1. CLAUDE.md — Root project context                                      ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
-log_step "1/10 · Root CLAUDE.md"
+log_step "1/12 · Root CLAUDE.md"
 
 # Build CLAUDE.md content based on stack
 CLAUDE_CONTENT="# Project Context
@@ -441,14 +449,16 @@ CLAUDE_CONTENT+="
 
 ## Development Workflow
 \`\`\`
-Develop → [Auto: Code Review + Security Scan] → qa agent → ship agent
+Plan (BMAD agents) → Develop → code-reviewer / security-reviewer → qa agent → ship agent
 \`\`\`
 
-### Automatic (every turn)
-- **Code Reviewer** — checks quality, OWASP Top 10, performance (blocks on critical)
-- **Security Reviewer** — SAST, dependency audit, secret scanning (blocks on critical)
+### BMAD Planning Agents (run in order for new projects/features)
+- \`claude --agent analyst\` — Interview → product brief (\`docs/briefs/product-brief.md\`)
+- \`claude --agent pm\` — Brief → PRD (\`docs/prd.md\`)
+- \`claude --agent architect\` — PRD → architecture (\`docs/architecture.md\`)
+- \`claude --agent scrum-master\` — PRD + arch → stories (\`docs/stories/*.md\`)
 
-### User-invoked Agents
+### Quality Gate Agents
 **From a separate terminal (new session):**"
 
 if $HAS_FE; then
@@ -457,20 +467,25 @@ if $HAS_FE; then
 fi
 
 CLAUDE_CONTENT+="
+- \`claude --agent code-reviewer\` — Quality gate: code quality, OWASP Top 10, performance
+- \`claude --agent security-reviewer\` — SAST, dependency audit, secret scanning
 - \`claude --agent qa\` — Run tests, generate missing coverage, E2E validation
 - \`claude --agent ship\` — Stage, commit (conventional), push, create PR
 
 **From within an active session (subagent delegation):**
 - \`Use the qa agent to check test coverage\`
 - \`Use the ship agent to commit and open a PR\`
-- \`Have the code-reviewer look at my recent changes\`"
+- \`Have the code-reviewer look at my recent changes\`
+
+### Commands
+- \`/project-help\` — List all agents, hooks, and workflows"
 
 write_file "CLAUDE.md" "$CLAUDE_CONTENT"
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║ 2. Subdirectory CLAUDE.md files                                          ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
-log_step "2/10 · Subdirectory CLAUDE.md files"
+log_step "2/12 · Subdirectory CLAUDE.md files"
 
 if $HAS_FE; then
 write_file_heredoc "frontend/CLAUDE.md" <<'CLAUDE_FE'
@@ -538,7 +553,7 @@ fi
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║ 3. Rules directory (path-scoped)                                         ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
-log_step "3/10 · Path-scoped rules"
+log_step "3/12 · Path-scoped rules"
 
 write_file_heredoc ".claude/rules/security.md" <<'RULE_SEC'
 # Security Rules
@@ -642,7 +657,7 @@ fi
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║ 4. Task agents (user-invoked)                                            ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
-log_step "4/10 · Task agents"
+log_step "4/12 · Task agents"
 
 write_file_heredoc ".claude/agents/ship.md" <<'AGENT_SHIP'
 ---
@@ -842,7 +857,7 @@ AGENT_QA
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║ 5. Agents                                                                ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
-log_step "5/10 · Custom agents"
+log_step "5/12 · Quality gate agents"
 
 write_file_heredoc ".claude/agents/code-reviewer.md" <<'AGENT_REVIEW'
 ---
@@ -965,9 +980,483 @@ Run these tools on changed files (skip if tool not installed):
 AGENT_SEC
 
 # ╔════════════════════════════════════════════════════════════════════════════╗
+# ║ 5b. BMAD Planning agents                                                 ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+log_step "6/12 · BMAD planning agents"
+
+write_file_heredoc ".claude/agents/analyst.md" <<'AGENT_ANALYST'
+---
+name: analyst
+description: Product analyst agent. Use when starting a new project or feature to gather requirements and create a product brief. Interviews the user to understand the problem, users, and goals.
+model: haiku
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Write
+---
+
+# Analyst — Product Discovery
+
+**FIRST:** Always begin your output with this identification banner:
+```
+═══════════════════════════════════════════
+📋 ANALYST AGENT (model: haiku)
+═══════════════════════════════════════════
+```
+
+You are a Product Analyst agent. Your job is to interview the user and produce a structured product brief.
+
+## NEVER write code. You produce documentation only.
+
+## Process
+
+### 1. Discovery Interview
+Ask the user these questions one at a time (adapt based on answers):
+
+1. **What problem are you solving?** Who has this problem and how do they deal with it today?
+2. **Who are the target users?** Describe 1-3 user personas with their goals and pain points.
+3. **What does success look like?** What metrics or outcomes matter?
+4. **What's the scope?** MVP vs full vision. What's in v1 and what's deferred?
+5. **Are there constraints?** Timeline, tech stack, integrations, regulatory requirements?
+6. **What exists already?** Any existing codebase, APIs, designs, or competitor references?
+
+### 2. Draft Product Brief
+After gathering answers, draft the brief using this template:
+
+```markdown
+# Product Brief: [Project Name]
+
+## Problem Statement
+[1-2 paragraphs describing the problem and who has it]
+
+## Target Users
+| Persona | Goals | Pain Points |
+|---------|-------|-------------|
+| ... | ... | ... |
+
+## Proposed Solution
+[High-level description of what we're building]
+
+## Success Metrics
+- [ ] [Metric 1]
+- [ ] [Metric 2]
+
+## Scope
+### In Scope (v1)
+- ...
+
+### Out of Scope (deferred)
+- ...
+
+## Constraints & Assumptions
+- ...
+
+## Open Questions
+- ...
+```
+
+### 3. Confirm & Write
+- Present the draft to the user for review
+- Incorporate feedback
+- Write the final brief to `docs/briefs/product-brief.md`
+
+## Output
+- **File:** `docs/briefs/product-brief.md`
+- Create the `docs/briefs/` directory if it doesn't exist
+
+## Rules
+- NEVER write code — only documentation
+- NEVER skip the interview — always ask questions first
+- NEVER assume answers — ask if unclear
+- Keep the brief concise (under 100 lines)
+AGENT_ANALYST
+
+write_file_heredoc ".claude/agents/pm.md" <<'AGENT_PM'
+---
+name: pm
+description: Product manager agent. Use after the analyst creates a product brief to generate a detailed PRD (Product Requirements Document) with features, user stories, and acceptance criteria.
+model: haiku
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Write
+---
+
+# PM — Product Requirements
+
+**FIRST:** Always begin your output with this identification banner:
+```
+═══════════════════════════════════════════
+📝 PM AGENT (model: haiku)
+═══════════════════════════════════════════
+```
+
+You are a Product Manager agent. Your job is to transform a product brief into a detailed PRD.
+
+## NEVER write code. You produce documentation only.
+
+## Prerequisites
+**STOP** if `docs/briefs/product-brief.md` does not exist. Tell the user:
+> "No product brief found at `docs/briefs/product-brief.md`. Run the **analyst** agent first to create one."
+
+## Process
+
+### 1. Read the Brief
+- Read `docs/briefs/product-brief.md`
+- Identify gaps or ambiguities
+
+### 2. Clarify with User
+Ask targeted questions about:
+- Feature prioritization (must-have vs nice-to-have)
+- User flow details
+- Edge cases and error handling expectations
+- Non-functional requirements (performance, security, scalability)
+
+### 3. Draft PRD
+Use this template:
+
+```markdown
+# PRD: [Project Name]
+
+## Overview
+[1 paragraph summary linking back to the product brief]
+
+## Goals & Non-Goals
+### Goals
+- ...
+
+### Non-Goals
+- ...
+
+## Features
+
+### Feature 1: [Name]
+**Priority:** P0 (must-have) | P1 (should-have) | P2 (nice-to-have)
+
+**User Stories:**
+- As a [persona], I want to [action] so that [benefit]
+
+**Acceptance Criteria:**
+- [ ] Given [context], when [action], then [result]
+
+**Edge Cases:**
+- ...
+
+## Non-Functional Requirements
+| Requirement | Target |
+|-------------|--------|
+| Response time | < 200ms for API calls |
+| Availability | 99.9% uptime |
+
+## Dependencies
+- ...
+
+## Milestones
+| Milestone | Features | Target |
+|-----------|----------|--------|
+| MVP | Feature 1, 2 | ... |
+
+## Open Questions
+- ...
+```
+
+### 4. Confirm & Write
+- Present the draft to the user
+- Incorporate feedback
+- Write to `docs/prd.md`
+
+## Output
+- **File:** `docs/prd.md`
+
+## Rules
+- NEVER write code — only documentation
+- NEVER skip reading the product brief
+- NEVER invent features not grounded in the brief — ask the user
+- Every feature must have user stories and acceptance criteria
+AGENT_PM
+
+write_file_heredoc ".claude/agents/architect.md" <<'AGENT_ARCH'
+---
+name: architect
+description: Software architect agent. Use after the PM creates a PRD to design the technical architecture, choose technologies, define APIs, and document the system design.
+model: sonnet
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Write
+---
+
+# Architect — Technical Design
+
+**FIRST:** Always begin your output with this identification banner:
+```
+═══════════════════════════════════════════
+🏗️ ARCHITECT AGENT (model: sonnet)
+═══════════════════════════════════════════
+```
+
+You are a Software Architect agent. Your job is to design the technical architecture based on the PRD and product brief.
+
+## NEVER write code. You produce documentation only.
+
+## Prerequisites
+**STOP** if either file is missing. Tell the user which prerequisite to run:
+- `docs/briefs/product-brief.md` — Run the **analyst** agent first
+- `docs/prd.md` — Run the **pm** agent first
+
+## Process
+
+### 1. Read Inputs
+- Read `docs/briefs/product-brief.md` for context
+- Read `docs/prd.md` for detailed requirements
+- Scan existing codebase (if any) for current patterns and constraints
+
+### 2. Discuss with User
+Present key architectural decisions and ask for preferences:
+- Tech stack choices, architecture pattern, data model
+- API design, authentication strategy, deployment approach
+
+### 3. Draft Architecture Doc
+Include: tech stack table with rationale, system architecture, data model, API design, project structure, infrastructure, security considerations, and decision log.
+
+### 4. Confirm & Write
+- Present the draft to the user
+- Discuss trade-offs for any contested decisions
+- Write to `docs/architecture.md`
+
+## Output
+- **File:** `docs/architecture.md`
+
+## Rules
+- NEVER write code — only documentation
+- NEVER skip reading both prerequisite files
+- NEVER make technology choices without discussing trade-offs with the user
+- Every decision should have a rationale
+AGENT_ARCH
+
+write_file_heredoc ".claude/agents/scrum-master.md" <<'AGENT_SM'
+---
+name: scrum-master
+description: Scrum master agent. Use after the architect creates the architecture doc to break the PRD into implementation-ready user stories with clear acceptance criteria and technical notes.
+model: haiku
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Write
+---
+
+# Scrum Master — Story Breakdown
+
+**FIRST:** Always begin your output with this identification banner:
+```
+═══════════════════════════════════════════
+📊 SCRUM MASTER AGENT (model: haiku)
+═══════════════════════════════════════════
+```
+
+You are a Scrum Master agent. Your job is to break the PRD into implementation-ready stories.
+
+## NEVER write code. You produce documentation only.
+
+## Prerequisites
+**STOP** if any file is missing. Tell the user which prerequisite to run:
+- `docs/prd.md` — Run the **pm** agent first
+- `docs/architecture.md` — Run the **architect** agent first
+
+## Process
+
+### 1. Read Inputs
+- Read `docs/prd.md` for features and acceptance criteria
+- Read `docs/architecture.md` for technical context
+
+### 2. Discuss with User
+- Confirm sprint size and priority ordering
+- Aim for stories sized at 2-4 hours of work each
+
+### 3. Create Stories
+Each story includes: user story, acceptance criteria, technical notes, estimate (S/M/L), dependencies.
+
+### 4. Write Files
+- Individual stories to `docs/stories/NNN-short-title.md`
+- Story index to `docs/stories/README.md`
+
+## Output
+- **Directory:** `docs/stories/`
+- **Index:** `docs/stories/README.md`
+
+## Rules
+- NEVER write code — only documentation
+- NEVER skip reading both prerequisite files
+- NEVER create stories larger than L (8h) — break them down further
+- Every story must have verifiable acceptance criteria
+- Stories must be ordered so dependencies are resolved first
+AGENT_SM
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
+# ║ 5c. Commands & docs scaffolding                                          ║
+# ╚════════════════════════════════════════════════════════════════════════════╝
+log_step "7/12 · Commands & docs scaffolding"
+
+write_file_heredoc ".claude/commands/project-help.md" <<'CMD_HELP'
+Display this reference guide. Format the output exactly as shown below using markdown.
+
+---
+
+# Project Reference
+
+## Planning Agents (BMAD Workflow)
+
+Run these agents **in order** to go from idea to implementation-ready stories. Each agent interviews you, drafts a document, and writes the output file after your confirmation.
+
+| # | Agent | Model | Output | Prereqs |
+|---|-------|-------|--------|---------|
+| 1 | **analyst** | Haiku | `docs/briefs/product-brief.md` | None |
+| 2 | **pm** | Haiku | `docs/prd.md` | product-brief |
+| 3 | **architect** | Sonnet | `docs/architecture.md` | product-brief + prd |
+| 4 | **scrum-master** | Haiku | `docs/stories/*.md` | prd + architecture |
+
+**Example — CLI (separate terminal):**
+```bash
+claude --agent analyst
+# ... complete the interview, review the brief ...
+claude --agent pm
+# ... review the PRD ...
+claude --agent architect
+# ... review the architecture ...
+claude --agent scrum-master
+# ... stories are ready, start coding
+```
+
+**Example — In-session (within your coding session):**
+```
+> Use the analyst agent to gather requirements for user authentication
+> Have the pm agent create the PRD
+> Use the architect to design the system
+> Have the scrum-master break it into stories
+```
+
+---
+
+## Quality Gate Agents
+
+Run these agents **on demand** to review, test, and ship your code.
+
+| Agent | Model | What it does |
+|-------|-------|-------------|
+| **code-reviewer** | Sonnet | Code quality, OWASP Top 10, N+1 queries, naming conventions |
+| **security-reviewer** | Haiku | SAST scanning, dependency audit, secret detection, data flow analysis |
+| **qa** | Sonnet | Run tests, check coverage, generate missing tests, E2E validation |
+| **ship** | Sonnet | Stage changes, conventional commit, push, open PR via `gh` |
+| **ui-review** | Sonnet | Accessibility, responsive design, component patterns (frontend stacks) |
+
+**Example — Typical development cycle:**
+```bash
+# Terminal 1: code with Opus
+claude
+> Implement the login page
+
+# Terminal 2: review and ship with Sonnet
+claude --agent code-reviewer      # review quality
+claude --agent security-reviewer  # scan for vulnerabilities
+claude --agent qa                 # run tests, check coverage
+claude --agent ship               # commit, push, open PR
+```
+
+**Example — In-session delegation:**
+```
+> Use the qa agent to run tests and check coverage
+> Have the code-reviewer look at my recent changes
+> Use the ship agent to commit and open a PR
+```
+
+---
+
+## Hooks (automatic — no action needed)
+
+| Hook | Trigger | What it does |
+|------|---------|-------------|
+| **PreToolUse** | Before any file write | Blocks writes to `.env`/secrets/`.git`, detects hardcoded API keys, blocks push to main/master |
+| **PostToolUse** | After each file edit | Auto-formats with Prettier (JS/TS) or Ruff (Python), then auto-lints — errors block and self-correct |
+| **Notification** | Permission prompt | Plays a system sound so you know Claude needs input (macOS) |
+
+---
+
+## Manual Lint Check
+
+The full-project lint/type-check script is available on demand:
+```bash
+bash .claude/hooks/end-of-turn-check.sh
+```
+Or ask within a session: *"Run the end-of-turn lint check on the project"*
+
+---
+
+## Quick Links
+
+- [User Guide](USER_GUIDE.md) — Full walkthrough of agents, workflows, and best practices
+- [README](README.md) — Project overview, setup, and configuration
+- [Claude Code Docs](https://docs.anthropic.com/en/docs/claude-code) — Official documentation
+CMD_HELP
+
+write_file_heredoc "docs/README.md" <<'DOCS_README'
+# Project Documentation
+
+This directory holds planning and design artifacts generated by the BMAD planning agents.
+
+## BMAD Workflow
+
+Run these agents in order to go from idea to implementation-ready stories:
+
+```
+1. analyst       → docs/briefs/product-brief.md
+2. pm            → docs/prd.md
+3. architect     → docs/architecture.md
+4. scrum-master  → docs/stories/*.md
+5. Start coding with implementation-ready stories
+```
+
+## Directory Structure
+
+```
+docs/
+├── README.md              # This file
+├── briefs/
+│   └── product-brief.md   # Product discovery (analyst agent)
+├── prd.md                 # Product requirements (pm agent)
+├── architecture.md        # Technical design (architect agent)
+└── stories/
+    ├── README.md          # Story index with sprint grouping
+    ├── 001-*.md           # Individual stories (scrum-master agent)
+    └── ...
+```
+
+## How to Use
+
+### Starting a new project
+```bash
+claude --agent analyst        # Interview → product brief
+claude --agent pm             # Brief → PRD
+claude --agent architect      # PRD → architecture doc
+claude --agent scrum-master   # PRD + arch → stories
+```
+
+### In-session
+```
+> Use the analyst agent to create a product brief
+> Have the pm agent write the PRD
+> Use the architect to design the system
+> Have the scrum-master break it into stories
+```
+DOCS_README
+
+# ╔════════════════════════════════════════════════════════════════════════════╗
 # ║ 6. Hook scripts                                                          ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
-log_step "6/10 · Hook scripts"
+log_step "8/12 · Hook scripts"
 
 write_file_heredoc ".claude/hooks/end-of-turn-check.sh" <<'HOOK_EOT'
 #!/usr/bin/env bash
@@ -975,26 +1464,30 @@ write_file_heredoc ".claude/hooks/end-of-turn-check.sh" <<'HOOK_EOT'
 # Exit code 2 blocks Claude and sends errors back for self-correction.
 set -uo pipefail
 
+# Resolve project root — CLAUDE_PROJECT_DIR is set by Claude Code hooks,
+# fall back to git root, then cwd.
+PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+
 ERRORS=""
 
 # ── Frontend checks (if frontend/ exists) ────────────────────────────────────
-if [[ -d "frontend" ]]; then
+if [[ -d "$PROJECT_ROOT/frontend" ]]; then
     # TypeScript type check
-    if command -v npx &> /dev/null && [[ -f "frontend/tsconfig.json" ]]; then
-        TSC_OUT=$(cd frontend && npx tsc --noEmit 2>&1) || ERRORS+="TypeScript errors:\n$TSC_OUT\n\n"
+    if command -v npx &> /dev/null && [[ -f "$PROJECT_ROOT/frontend/tsconfig.json" ]]; then
+        TSC_OUT=$(cd "$PROJECT_ROOT/frontend" && npx tsc --noEmit 2>&1) || ERRORS+="TypeScript errors:\n$TSC_OUT\n\n"
     fi
 
     # ESLint
-    if [[ -f "frontend/.eslintrc.js" ]] || [[ -f "frontend/.eslintrc.json" ]] || [[ -f "frontend/eslint.config.mjs" ]] || [[ -f "frontend/eslint.config.js" ]]; then
-        LINT_OUT=$(cd frontend && npx eslint src/ --quiet 2>&1) || ERRORS+="ESLint errors:\n$LINT_OUT\n\n"
+    if [[ -f "$PROJECT_ROOT/frontend/.eslintrc.js" ]] || [[ -f "$PROJECT_ROOT/frontend/.eslintrc.json" ]] || [[ -f "$PROJECT_ROOT/frontend/eslint.config.mjs" ]] || [[ -f "$PROJECT_ROOT/frontend/eslint.config.js" ]]; then
+        LINT_OUT=$(cd "$PROJECT_ROOT/frontend" && npx eslint src/ --quiet 2>&1) || ERRORS+="ESLint errors:\n$LINT_OUT\n\n"
     fi
 fi
 
 # ── Backend checks (if backend/ exists) ──────────────────────────────────────
-if [[ -d "backend" ]]; then
+if [[ -d "$PROJECT_ROOT/backend" ]]; then
     # Ruff linting
     if command -v ruff &> /dev/null; then
-        RUFF_OUT=$(cd backend && ruff check . 2>&1) || ERRORS+="Ruff errors:\n$RUFF_OUT\n\n"
+        RUFF_OUT=$(cd "$PROJECT_ROOT/backend" && ruff check . 2>&1) || ERRORS+="Ruff errors:\n$RUFF_OUT\n\n"
     fi
 fi
 
@@ -1016,7 +1509,14 @@ set -uo pipefail
 
 INPUT=$(cat)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
-CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // .tool_input.new_string // empty')
+
+# Extract content from Write (.content), Edit (.new_string), or MultiEdit (.edits[].new_string)
+CONTENT=$(echo "$INPUT" | jq -r '
+  [.tool_input.content // empty,
+   .tool_input.new_string // empty,
+   (.tool_input.edits // [] | .[].new_string // empty)]
+  | map(select(. != "")) | join("\n")
+')
 
 if [[ -z "$CONTENT" ]]; then
     exit 0
@@ -1077,7 +1577,7 @@ make_executable ".claude/hooks/build-notify.sh"
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║ 7. Settings (hooks + permissions)                                        ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
-log_step "7/10 · Settings & hook wiring"
+log_step "9/12 · Settings & hook wiring"
 
 write_file_heredoc ".claude/settings.json" <<'SETTINGS'
 {
@@ -1112,7 +1612,7 @@ write_file_heredoc ".claude/settings.json" <<'SETTINGS'
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.tool_input.command' | { read cmd; if echo \"$cmd\" | grep -qE 'git (commit|push).*(main|master)'; then echo 'BLOCKED: Create a feature branch first. Do not commit/push directly to main/master.' >&2; exit 2; fi; }"
+            "command": "jq -r '.tool_input.command' | { read cmd; if echo \"$cmd\" | grep -qE 'git\\s+push'; then BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); if [ \"$BRANCH\" = 'main' ] || [ \"$BRANCH\" = 'master' ]; then echo \"BLOCKED: You are on '$BRANCH'. Create a feature branch first.\" >&2; exit 2; fi; fi; }"
           }
         ]
       }
@@ -1137,25 +1637,6 @@ write_file_heredoc ".claude/settings.json" <<'SETTINGS'
         ]
       }
     ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash $CLAUDE_PROJECT_DIR/.claude/hooks/end-of-turn-check.sh"
-          },
-          {
-            "type": "command",
-            "command": "claude --agent code-reviewer --print 'Review the files changed in this session. Run git diff to find changes.' 2>/dev/null || true"
-          },
-          {
-            "type": "command",
-            "command": "claude --agent security-reviewer --print 'Scan files changed in this session for security issues. Run git diff --name-only to find changed files.' 2>/dev/null || true"
-          }
-        ]
-      }
-    ],
     "Notification": [
       {
         "matcher": "permission_prompt",
@@ -1174,7 +1655,7 @@ SETTINGS
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║ 8. MCP configuration                                                     ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
-log_step "8/10 · MCP server configuration"
+log_step "10/12 · MCP server configuration"
 
 # ── Available MCP servers ────────────────────────────────────────────────────
 # Each entry: KEY|LABEL|DESCRIPTION|JSON_BLOCK
@@ -1312,7 +1793,7 @@ fi
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║ 9. Gitignore additions                                                   ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
-log_step "9/10 · Gitignore updates"
+log_step "11/12 · Gitignore updates"
 
 GITIGNORE_ADDITIONS="
 # Claude Code local overrides (do not commit personal settings)
@@ -1338,7 +1819,7 @@ fi
 # ╔════════════════════════════════════════════════════════════════════════════╗
 # ║ 10. Install dependencies                                                  ║
 # ╚════════════════════════════════════════════════════════════════════════════╝
-log_step "10/10 · Install dependencies"
+log_step "12/12 · Install dependencies"
 
 if $SKIP_INSTALL || $DRY_RUN; then
     if $DRY_RUN; then
@@ -1433,11 +1914,12 @@ fi
 if $HAS_BE; then
 echo -e "  ${CYAN}.claude/rules/backend/*.md${NC}        API & database rules"
 fi
-AGENT_COUNT=4
-$HAS_FE && AGENT_COUNT=5
-echo -e "  ${CYAN}.claude/agents/*.md${NC}               $AGENT_COUNT agents (code-reviewer, security-reviewer — auto; ship, qa$(${HAS_FE} && echo ', ui-review') — on demand)"
-echo -e "  ${CYAN}.claude/hooks/*.sh${NC}                3 hook scripts (quality gate, secrets, notifications)"
+AGENT_COUNT=$(find "$PROJECT_DIR/.claude/agents" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+echo -e "  ${CYAN}.claude/agents/*.md${NC}               $AGENT_COUNT agents (4 BMAD planning + $(( AGENT_COUNT - 4 )) quality gates)"
+echo -e "  ${CYAN}.claude/commands/project-help.md${NC}  /project-help command"
+echo -e "  ${CYAN}.claude/hooks/*.sh${NC}                3 hook scripts (secrets, format, notifications)"
 echo -e "  ${CYAN}.claude/settings.json${NC}             Hooks wiring + permission denylists"
+echo -e "  ${CYAN}docs/README.md${NC}                    BMAD workflow guide + docs scaffolding"
 MCP_NAMES=""
 $SEL_PLAYWRIGHT && MCP_NAMES+="Playwright, "
 $SEL_POSTGRES && MCP_NAMES+="PostgreSQL, "
@@ -1453,13 +1935,14 @@ echo ""
 echo -e "  ${YELLOW}PreToolUse${NC}   Blocks writes to .env/secrets files + blocks secrets in code"
 echo -e "  ${YELLOW}PreToolUse${NC}   Blocks direct commits/pushes to main/master"
 echo -e "  ${YELLOW}PostToolUse${NC}  Auto-formats & lints every file edit (Prettier/ESLint or Ruff)"
-echo -e "  ${YELLOW}Stop${NC}         Type-check + lint + auto code review + security scan on every turn"
 echo -e "  ${YELLOW}Notification${NC} Plays a sound when Claude needs your permission"
 echo ""
 echo -e "${BOLD}Next steps:${NC}"
 echo ""
 echo -e "  1. ${DIM}cd $PROJECT_DIR${NC}"
 echo -e "  2. Review & customize ${CYAN}CLAUDE.md${NC} for your specific project details"
-echo -e "  3. Run ${CYAN}claude${NC} and start developing — code review + security run automatically"
-echo -e "  4. Use ${CYAN}claude --agent qa${NC} before shipping, ${CYAN}claude --agent ship${NC} to open a PR"
+echo -e "  3. Run ${CYAN}claude${NC} and start developing"
+echo -e "  4. Use ${CYAN}/project-help${NC} for a full list of agents and commands"
+echo -e "  5. Start with ${CYAN}claude --agent analyst${NC} to plan a new feature (BMAD workflow)"
+echo -e "  6. Use ${CYAN}claude --agent qa${NC} before shipping, ${CYAN}claude --agent ship${NC} to open a PR"
 echo ""
