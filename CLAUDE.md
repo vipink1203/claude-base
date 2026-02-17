@@ -8,6 +8,7 @@
 ## Common Commands
 - `bash claude-code-bootstrap.sh --dry-run` — Preview what would be created
 - `bash claude-code-bootstrap.sh --stack generic .` — Bootstrap current dir
+- `bash claude-code-bootstrap.sh --agent-platform claude,codex .` — Scaffold multiple agent platforms
 - `bash claude-code-bootstrap.sh --uninstall .` — Remove bootstrap files
 - `bash -n claude-code-bootstrap.sh` — Syntax-check the script
 
@@ -43,3 +44,4 @@ Plan (BMAD agents) → Develop → code-reviewer / security-reviewer → qa agen
 
 ### Commands
 - `/project-help` — List all agents, hooks, and workflows
+- See `docs/help/` for provider-specific help references (Claude/Gemini/Codex)

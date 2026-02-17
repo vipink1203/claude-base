@@ -5,3 +5,5 @@ docs/briefs/
 # Claude Code local overrides (do not commit personal settings)
 .claude/settings.local.json
 CLAUDE.local.md
+# Local AI assistant overrides (do not commit personal settings)
+AGENTS.local.md
