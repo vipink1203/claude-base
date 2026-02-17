@@ -13,9 +13,9 @@ A practical guide to getting the most out of your bootstrapped Claude Code proje
   - [What gets created](#what-gets-created)
   - [Dry run & uninstall](#dry-run--uninstall)
 - [Quick Start](#quick-start)
+- [BMAD Agile Planning Workflow](#bmad-agile-planning-workflow)
 - [Understanding the Agent System](#understanding-the-agent-system)
-  - [Auto Agents (run every turn)](#auto-agents-run-every-turn)
-  - [Task Agents (user-invoked)](#task-agents-user-invoked)
+  - [User-invoked Agents](#user-invoked-agents)
 - [Invoking Agents](#invoking-agents)
   - [Method 1: CLI (new terminal)](#method-1-cli-new-terminal)
   - [Method 2: In-Session Delegation](#method-2-in-session-delegation)
@@ -110,8 +110,8 @@ your-project/
 └── .claude/
     ├── settings.json                   # Hooks pipeline + permission deny lists
     ├── agents/
-    │   ├── code-reviewer.md            # Auto: quality gate (Stop hook)
-    │   ├── security-reviewer.md        # Auto: SAST + secrets scan (Stop hook)
+    │   ├── code-reviewer.md            # Quality gate — invoke manually (Sonnet)
+    │   ├── security-reviewer.md        # Security scan — invoke manually (Haiku)
     │   ├── ship.md                     # Task: git commit, push, PR
     │   ├── qa.md                       # Task: tests, coverage, E2E
     │   └── ui-review.md               # Task: a11y, responsive, UX (frontend stacks)
@@ -164,7 +164,7 @@ cd your-project
 claude
 ```
 
-That's it. The auto agents (code reviewer + security reviewer) are already active. They run silently at the end of every turn — if they find critical issues, Claude will self-correct before finishing.
+That's it. PostToolUse hooks auto-format and lint every file edit. Use `/project-help` for a quick reference of all agents and commands.
 
 You now have access to several agents you can invoke on demand. Try one:
 
@@ -184,34 +184,54 @@ This confirms which agent is running and on what model.
 
 ---
 
+## BMAD Agile Planning Workflow
+
+Before writing code, use the BMAD planning agents to go from idea to implementation-ready stories. Run them in order:
+
+```
+1. analyst       → Interview → docs/briefs/product-brief.md
+2. pm            → Brief → docs/prd.md
+3. architect     → PRD → docs/architecture.md
+4. scrum-master  → PRD + arch → docs/stories/*.md
+5. Start coding with implementation-ready stories
+```
+
+| Step | Agent | Model | Command | What it produces |
+|------|-------|-------|---------|-----------------|
+| 1 | **analyst** | Haiku | `claude --agent analyst` | Product brief with personas, scope, metrics |
+| 2 | **pm** | Haiku | `claude --agent pm` | PRD with features, user stories, acceptance criteria |
+| 3 | **architect** | Sonnet | `claude --agent architect` | Architecture doc with tech stack, data model, API design |
+| 4 | **scrum-master** | Haiku | `claude --agent scrum-master` | Individual stories sized for 2-4 hours of work |
+
+Each agent is **dialogue-based** — it interviews you, drafts a document, asks for confirmation, then writes the file. Each checks for prerequisite files and stops with a clear message if they're missing.
+
+**In-session usage:**
+```
+> Use the analyst agent to start a new product brief
+> Have the pm agent create the PRD
+> Use the architect to design the system
+> Have the scrum-master break it into stories
+```
+
+**Tips:**
+- You can re-run any agent to update its output (e.g., run `pm` again after scope changes)
+- All output goes to `docs/` — commit these artifacts to track project evolution
+- Use `/project-help` for a quick reference of all agents and commands
+
+---
+
 ## Understanding the Agent System
 
-Your project comes with **5 agents** organized into two categories:
+Your project comes with **9 agents** — 4 BMAD planning agents and 5 quality gate agents:
 
-### Auto Agents (run every turn)
-
-These agents run automatically via **Stop hooks** at the end of every Claude turn. You don't need to invoke them — they're always watching.
-
-| Agent | Model | What it does |
-|-------|-------|-------------|
-| 🔍 **code-reviewer** | Sonnet | Reviews changed files for code quality, OWASP Top 10 security, performance issues. Blocks on critical findings. |
-| 🛡️ **security-reviewer** | Haiku | Runs Bandit SAST, dependency audit, secret scanning, data flow analysis. Reports only high-confidence, exploitable findings. |
-
-**How they work:**
-
-1. You write code and Claude finishes its turn
-2. Stop hooks trigger lint/type checks (tsc, ESLint, Ruff)
-3. Code reviewer scans for quality issues
-4. Security reviewer scans for vulnerabilities
-5. If either finds **Critical** issues → blocks the turn (exit code 2) → Claude sees the error and fixes it
-6. If only Warnings/Suggestions → turn completes, report is printed
-
-### Task Agents (user-invoked)
+### User-invoked Agents
 
 These agents run **only when you ask for them**. They each specialize in a specific workflow.
 
 | Agent | Model | When to use | What it does |
 |-------|-------|-------------|-------------|
+| 🔍 **code-reviewer** | Sonnet | After code changes, before shipping | Reviews quality, OWASP Top 10, N+1 queries, naming conventions |
+| 🛡️ **security-reviewer** | Haiku | After code changes, before shipping | Runs Bandit SAST, dependency audit, secret scanning, data flow analysis |
 | 🚀 **ship** | Sonnet | Ready to commit and push | Creates feature branch, stages files, generates conventional commit message, pushes, opens PR via `gh` |
 | 🧪 **qa** | Sonnet | Before shipping | Runs tests (pytest/vitest), analyzes coverage, generates missing tests, runs E2E if Playwright is available |
 | 🎨 **ui-review** | Sonnet | After frontend changes | Reviews accessibility, responsive design, shadcn/ui patterns, motion.dev animations, takes Playwright screenshots |
@@ -230,6 +250,8 @@ Open a **separate terminal** and run:
 claude --agent ship
 claude --agent qa
 claude --agent ui-review
+claude --agent code-reviewer
+claude --agent security-reviewer
 ```
 
 **What happens:** This starts an entirely new Claude session dedicated to that agent. The agent gets:
@@ -295,8 +317,8 @@ Here's the full roster:
 
 | Banner | Agent | Model | Trigger |
 |--------|-------|-------|---------|
-| 🔍 CODE REVIEWER | `code-reviewer` | Sonnet | Auto (every turn) |
-| 🛡️ SECURITY REVIEWER | `security-reviewer` | Haiku | Auto (every turn) |
+| 🔍 CODE REVIEWER | `code-reviewer` | Sonnet | User-invoked |
+| 🛡️ SECURITY REVIEWER | `security-reviewer` | Haiku | User-invoked |
 | 🚀 SHIP AGENT | `ship` | Sonnet | User-invoked |
 | 🧪 QA AGENT | `qa` | Sonnet | User-invoked |
 | 🎨 UI REVIEW AGENT | `ui-review` | Sonnet | User-invoked |
@@ -322,20 +344,9 @@ Edit file → Prettier auto-format → ESLint auto-fix → ✅ or ❌ back to Cl
 - **Python** files: Ruff checks and formats
 - If errors remain after auto-fix, they're sent back to Claude (exit code 2) and Claude fixes them
 
-### What happens at end of turn
-
-When Claude finishes its turn, **Stop hooks** run a comprehensive check:
-
-```
-Turn complete → tsc --noEmit (TypeScript check)
-             → ESLint full project
-             → Ruff check full project
-             → 🔍 Code Reviewer agent
-             → 🛡️ Security Reviewer agent
-             → ✅ Turn allowed to complete
-               or
-             → ❌ Errors sent back, Claude fixes and retries
-```
+> **Tip:** Run `claude --agent code-reviewer` and `claude --agent security-reviewer` for thorough reviews before shipping.
+>
+> **Manual lint check:** Run `bash .claude/hooks/end-of-turn-check.sh` for a full project lint/type-check on demand.
 
 ### The self-correcting loop
 
@@ -347,11 +358,9 @@ The key mechanism is **exit code 2**. When any hook returns exit code 2:
 4. The hook runs again on the new code
 5. This repeats until all checks pass
 
-This means Claude literally **cannot** finish a turn with:
-- Lint errors
-- Type errors
-- Critical security vulnerabilities
-- Hardcoded secrets
+This means Claude literally **cannot** complete an edit with:
+- Lint errors (caught by PostToolUse auto-lint)
+- Hardcoded secrets (caught by PreToolUse secret detection)
 
 ### What hooks block before Claude even writes
 
@@ -372,8 +381,8 @@ Bootstrap uses a deliberate model allocation strategy to balance quality and cos
 | Role | Model | Why |
 |------|-------|-----|
 | **Main coding agent** | Opus (your default) | Complex reasoning, architecture, code generation |
-| **Code reviewer** (auto) | Sonnet | Good for pattern matching, cheaper per turn |
-| **Security reviewer** (auto) | Haiku | Fast scanning, regex matching — runs every turn so cost matters |
+| **Code reviewer** (on demand) | Sonnet | Good for pattern matching and best-practice checks |
+| **Security reviewer** (on demand) | Haiku | Fast scanning, regex matching |
 | **ship, qa, ui-review** (on demand) | Sonnet | Workflow execution with tool access |
 
 **Only your main coding agent uses Opus.** All other agents run on cheaper models, enforced by the `model:` field in each agent's frontmatter. This keeps costs manageable while maintaining quality where it matters.
@@ -562,7 +571,6 @@ Edit `.claude/settings.json` to change what runs on each event:
 Hook types:
 - **PreToolUse** — runs *before* Claude writes (block dangerous actions)
 - **PostToolUse** — runs *after* each edit (auto-format, lint)
-- **Stop** — runs at *end of turn* (comprehensive validation)
 - **Notification** — runs on permission prompts (audio alerts)
 
 ### Adding MCP servers
@@ -617,21 +625,6 @@ If that doesn't work, check that the agent file exists in `.claude/agents/` and 
 2. Run the hook command manually to see if it produces output
 3. Check that the hook exits with code 2 on errors (not code 1)
 
-### Auto agents produce too much noise
-
-**Symptom:** Code reviewer / security reviewer flag issues on every turn when you're just exploring.
-
-**Options:**
-1. Temporarily disable by editing `.claude/settings.json` — comment out the Stop hook agents
-2. Use `.claude/settings.local.json` for personal overrides (this file is gitignored):
-   ```json
-   {
-     "hooks": {
-       "Stop": []
-     }
-   }
-   ```
-
 ### Context fills up too fast
 
 **Symptoms:** Quality degrades, Claude forgets earlier instructions, responses become generic.
@@ -646,8 +639,8 @@ If that doesn't work, check that the agent file exists in `.claude/agents/` and 
 
 ## FAQ
 
-**Q: Do auto agents cost money?**
-A: Yes. The code-reviewer (Sonnet) and security-reviewer (Haiku) each make API calls at the end of every turn. At typical usage (~$6/day), this is a small fraction of total cost. If cost is a concern, switch both to Haiku or disable them.
+**Q: Do the review agents cost money?**
+A: Yes. The code-reviewer (Sonnet) and security-reviewer (Haiku) each make API calls when invoked. Since they're now user-invoked (not automatic), you control when they run and the associated costs.
 
 **Q: Can I use agents from other projects?**
 A: Yes. You can place agents in `~/.claude/agents/` for user-level agents available in all projects, or use `claude --agents '{...}'` to define agents inline for a single session.

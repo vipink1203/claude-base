@@ -17,7 +17,6 @@ graph TD
     A["./claude-code-bootstrap.sh"] --> B["CLAUDE.md Files"]
     A --> C["Path-Scoped Rules"]
     A --> D["Task Agents"]
-    A --> E["Auto Agents"]
     A --> F["Hooks"]
     A --> G["MCP Servers"]
     A --> H["Install Tooling"]
@@ -32,17 +31,16 @@ graph TD
     C --> C4["backend/api.md — async, Depends, Pydantic"]
     C --> C5["backend/database.md — SQLAlchemy 2.0, Alembic"]
 
+    D --> D0["BMAD Planning: analyst → pm → architect → scrum-master"]
     D --> D1["ship — stage, commit, push, open PR (Sonnet)"]
     D --> D2["ui-review — UX, a11y, responsive checks (Sonnet)"]
     D --> D3["qa — tests, coverage, E2E validation (Sonnet)"]
-
-    E --> E1["code-reviewer — auto quality gate (Sonnet, Stop hook)"]
-    E --> E2["security-reviewer — auto SAST scan (Haiku, Stop hook)"]
+    D --> D4["code-reviewer — quality gate (Sonnet)"]
+    D --> D5["security-reviewer — SAST scan (Haiku)"]
 
     F --> F1["PreToolUse — block secrets, protect main branch"]
     F --> F2["PostToolUse — auto-format + lint every edit"]
-    F --> F3["Stop — full project validation gate"]
-    F --> F4["Notification — audio alerts"]
+    F --> F3["Notification — audio alerts"]
 
     G --> G1["Playwright MCP — browser verification"]
     G --> G2["PostgreSQL MCP — schema-aware queries"]
@@ -52,15 +50,33 @@ graph TD
     style B fill:#2563eb,color:#fff,stroke:none
     style C fill:#2563eb,color:#fff,stroke:none
     style D fill:#2563eb,color:#fff,stroke:none
-    style E fill:#2563eb,color:#fff,stroke:none
     style F fill:#2563eb,color:#fff,stroke:none
     style G fill:#2563eb,color:#fff,stroke:none
     style H fill:#2563eb,color:#fff,stroke:none
 ```
 
+## BMAD Planning Agents
+
+Bootstrap includes 4 planning agents that guide you from idea to implementation-ready stories:
+
+```
+analyst → pm → architect → scrum-master → start coding
+```
+
+| Agent | Model | Command | Output |
+|-------|-------|---------|--------|
+| **analyst** | Haiku | `claude --agent analyst` | `docs/briefs/product-brief.md` |
+| **pm** | Haiku | `claude --agent pm` | `docs/prd.md` |
+| **architect** | Sonnet | `claude --agent architect` | `docs/architecture.md` |
+| **scrum-master** | Haiku | `claude --agent scrum-master` | `docs/stories/*.md` |
+
+Each agent is dialogue-based (interview → draft → confirm → write) and checks for prerequisite files before running. None of them write code — they produce documentation only.
+
+Use `/project-help` within a Claude session for a full reference of all agents and commands.
+
 ## How the hooks pipeline works
 
-Every file edit and every turn Claude takes passes through a deterministic quality pipeline. The key mechanism is **exit code 2** — it blocks Claude's action and feeds errors back, creating a self-correcting loop.
+Every file edit passes through a deterministic quality pipeline. The key mechanism is **exit code 2** — it blocks Claude's action and feeds errors back, creating a self-correcting loop.
 
 ```mermaid
 sequenceDiagram
@@ -68,7 +84,6 @@ sequenceDiagram
     participant Pre as PreToolUse Hooks
     participant FS as File System
     participant Post as PostToolUse Hooks
-    participant Stop as Stop Hook
 
     C->>Pre: Wants to edit a file
     Pre->>Pre: Check: is it .env / secrets / .git?
@@ -93,22 +108,6 @@ sequenceDiagram
     else All clean
         Post-->>C: ✅ Edit accepted
     end
-
-    Note over C: Claude finishes its turn
-
-    C->>Stop: Turn complete → end-of-turn gate
-    Stop->>Stop: tsc --noEmit (frontend)
-    Stop->>Stop: ESLint full project (frontend)
-    Stop->>Stop: Ruff check (backend)
-    Stop->>Stop: Code Reviewer agent (Sonnet)
-    Stop->>Stop: Security Reviewer agent (Haiku)
-    alt Any check fails or Critical finding
-        Stop-->>C: ❌ Exit 2 — errors/findings sent back
-        C->>C: Fixes remaining issues
-        C->>Stop: Re-triggers stop check
-    else All pass
-        Stop-->>C: ✅ Turn allowed to complete
-    end
 ```
 
 ## Directory structure created
@@ -128,15 +127,23 @@ your-project/
 │   │       ├── api.md                     # async, Depends(), Pydantic models
 │   │       └── database.md                # SQLAlchemy 2.0, Alembic migrations
 │   ├── agents/
-│   │   ├── code-reviewer.md               # Auto quality gate via Stop hook (Sonnet)
-│   │   ├── security-reviewer.md           # Auto security scan via Stop hook (Haiku)
+│   │   ├── analyst.md                     # BMAD: product discovery (Haiku)
+│   │   ├── pm.md                          # BMAD: PRD from brief (Haiku)
+│   │   ├── architect.md                   # BMAD: technical design (Sonnet)
+│   │   ├── scrum-master.md                # BMAD: stories from PRD (Haiku)
+│   │   ├── code-reviewer.md               # Quality gate — invoke manually (Sonnet)
+│   │   ├── security-reviewer.md           # Security scan — invoke manually (Haiku)
 │   │   ├── ship.md                        # Git commit, push, PR (Sonnet)
 │   │   ├── ui-review.md                   # UX, a11y, responsive review (Sonnet)
 │   │   └── qa.md                          # Tests, coverage, E2E (Sonnet)
+│   ├── commands/
+│   │   └── project-help.md                # /project-help slash command
 │   └── hooks/
 │       ├── end-of-turn-check.sh           # Full project tsc + eslint + ruff
 │       ├── detect-secrets.sh              # AWS/Stripe/GitHub token patterns
 │       └── build-notify.sh                # macOS sounds on test/build results
+├── docs/
+│   └── README.md                          # BMAD workflow guide
 ├── frontend/
 │   └── CLAUDE.md                          # Frontend-specific conventions
 └── backend/
@@ -202,27 +209,20 @@ Playwright Chromium (for MCP browser verification + E2E tests)
 ## Workflow
 
 ```
-Develop → [Auto: Code Review + Security Scan] → ui-review agent → qa agent → ship agent
+Plan (BMAD agents) → Develop → code-reviewer / security-reviewer → qa agent → ship agent
 ```
 
-### Automatic Agents (Stop hook — every turn)
-
-| Agent | Model | What it does |
-|-------|-------|--------------|
-| **code-reviewer** | Sonnet | Reviews changed files for quality, OWASP Top 10, N+1 queries, naming. Blocks on critical issues (exit 2). |
-| **security-reviewer** | Haiku | Runs Bandit SAST, dependency audit, secret scanning, data flow analysis. Reports only high-confidence findings. |
-
-Both agents run automatically at the end of every Claude turn. If either finds a **Critical** issue, it returns exit code 2, blocking the turn and forcing Claude to self-correct.
-
-### Task Agents (user-invoked)
+### User-invoked Agents
 
 | Agent | Model | CLI (new terminal) | In-session (natural language) | What it does |
 |-------|-------|-------------------|-------------------------------|-------------|
+| **code-reviewer** | Sonnet | `claude --agent code-reviewer` | `Have the code-reviewer look at my recent changes` | Reviews quality, OWASP Top 10, N+1 queries, naming. Blocks on critical issues. |
+| **security-reviewer** | Haiku | `claude --agent security-reviewer` | `Run the security-reviewer agent` | Runs Bandit SAST, dependency audit, secret scanning, data flow analysis. |
 | **ship** | Sonnet | `claude --agent ship` | `Use the ship agent to open a PR` | Verify branch, stage changes, conventional commit, push, create PR via `gh` |
 | **ui-review** | Sonnet | `claude --agent ui-review` | `Have the ui-review agent check my changes` | Component architecture, a11y, responsive design, motion.dev, Tailwind, Playwright screenshots |
 | **qa** | Sonnet | `claude --agent qa` | `Use the qa agent to check test coverage` | Run tests, analyze coverage, generate missing tests, E2E via Playwright, report blockers |
 
-Task agents run as **subagents on Sonnet**, keeping Opus reserved for the main coding session. Each agent prints an identification banner showing its name and model on startup.
+All agents run as **subagents on Sonnet/Haiku**, keeping Opus reserved for the main coding session. Each agent prints an identification banner showing its name and model on startup.
 
 **Two invocation methods:**
 - **CLI** (`claude --agent <name>`) — starts a *new* session dedicated to that agent
@@ -244,14 +244,6 @@ graph LR
         Q3["Sound notification on test/build"]
     end
 
-    subgraph "Stop — End of Claude's turn"
-        S1["tsc --noEmit (full frontend)"]
-        S2["ESLint (full frontend)"]
-        S3["Ruff check (full backend)"]
-        S4["Code Reviewer agent (Sonnet)"]
-        S5["Security Reviewer agent (Haiku)"]
-    end
-
     subgraph "Notification"
         N1["🔔 Sound when permission needed"]
     end
@@ -262,15 +254,12 @@ graph LR
     style Q1 fill:#f59e0b,color:#000,stroke:none
     style Q2 fill:#f59e0b,color:#000,stroke:none
     style Q3 fill:#f59e0b,color:#000,stroke:none
-    style S1 fill:#2563eb,color:#fff,stroke:none
-    style S2 fill:#2563eb,color:#fff,stroke:none
-    style S3 fill:#2563eb,color:#fff,stroke:none
-    style S4 fill:#7c3aed,color:#fff,stroke:none
-    style S5 fill:#7c3aed,color:#fff,stroke:none
     style N1 fill:#7c3aed,color:#fff,stroke:none
 ```
 
-The self-correcting loop: when any hook returns **exit code 2**, Claude sees the error output and automatically fixes the issue before retrying. This means Claude cannot finish a turn with lint errors, type errors, or security violations.
+The self-correcting loop: when any hook returns **exit code 2**, Claude sees the error output and automatically fixes the issue before retrying. This means Claude cannot finish a turn with lint errors or security violations.
+
+> **Manual lint check:** The `end-of-turn-check.sh` script is available for on-demand use: `bash .claude/hooks/end-of-turn-check.sh`
 
 ## MCP servers
 
@@ -300,7 +289,7 @@ cd your-project
 claude
 ```
 
-The auto agents (code-reviewer + security-reviewer) run silently at the end of every turn. You don't need to do anything — if they find critical issues, Claude will self-correct before finishing.
+PostToolUse hooks auto-format and lint every file edit. Use `/project-help` for a full list of agents and commands.
 
 ### Invoking task agents
 
@@ -311,6 +300,8 @@ Task agents can be launched two ways:
 claude --agent ship
 claude --agent qa
 claude --agent ui-review
+claude --agent code-reviewer
+claude --agent security-reviewer
 ```
 
 **From within a Claude session** (ask Claude to delegate):
@@ -324,6 +315,8 @@ claude --agent ui-review
 | `ship` | Ready to commit and open a PR | Creates feature branch, stages files, conventional commit, pushes, opens PR via `gh` |
 | `qa` | Before shipping, to verify quality | Runs pytest/vitest, checks coverage, generates missing tests, runs E2E |
 | `ui-review` | After frontend changes | Reviews a11y, responsive design, shadcn/ui patterns, animation conventions |
+| `code-reviewer` | After code changes, before shipping | Reviews quality, OWASP Top 10, N+1 queries, naming conventions |
+| `security-reviewer` | After code changes, before shipping | Runs SAST, dependency audit, secret scanning |
 
 All task agents run on **Sonnet** regardless of your main model setting.
 
@@ -362,23 +355,17 @@ claude --agent ship          # creates branch, commits, pushes, opens PR
 
 In-session delegation runs the agent as a **subagent** — it gets its own context window, uses the model specified in its config, and returns a summary to your main session.
 
-### How auto agents work
-
-The two agents run as **Stop hooks** — they execute after Claude finishes each turn:
-
-1. **Lint/type checks** run first (tsc, ESLint, Ruff)
-2. **Code reviewer** (Sonnet) scans changed files for quality/security issues
-3. **Security reviewer** (Haiku) runs SAST tools and pattern matching
-
-If any check returns **exit code 2**, Claude's turn is blocked and the errors are fed back for self-correction. This creates an automatic quality loop — Claude cannot produce code with lint errors, type errors, or critical security issues.
+> **Code review and security scanning** are available as user-invoked agents (`claude --agent code-reviewer` / `claude --agent security-reviewer`). Run them when you want a thorough review, before shipping.
+>
+> **Manual lint check:** Run `bash .claude/hooks/end-of-turn-check.sh` for a full project lint/type-check.
 
 ### Model allocation
 
 | Role | Model | Why |
 |------|-------|-----|
 | **Main coding agent** | Opus (your CLI default) | Complex reasoning, architecture decisions, code generation |
-| **Code reviewer** (auto) | Sonnet | Good enough for pattern matching and best-practice checks, cheaper per turn |
-| **Security reviewer** (auto) | Haiku | Fast SAST scanning and regex matching, runs every turn so cost matters |
+| **Code reviewer** (on demand) | Sonnet | Good enough for pattern matching and best-practice checks |
+| **Security reviewer** (on demand) | Haiku | Fast SAST scanning and regex matching |
 | **ship, qa, ui-review** (on demand) | Sonnet | Executes workflows with tool access, doesn't need Opus-level reasoning |
 
 Only the main coding agent uses Opus. All other agents run as subagents on cheaper models — this is enforced by the `model:` field in each agent's frontmatter.
