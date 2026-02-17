@@ -10,6 +10,7 @@ A practical guide to getting the most out of your bootstrapped Claude Code proje
   - [Running the bootstrap script](#running-the-bootstrap-script)
   - [Script options](#script-options)
   - [Stack types](#stack-types)
+  - [Agent platform selection](#agent-platform-selection)
   - [What gets created](#what-gets-created)
   - [Dry run & uninstall](#dry-run--uninstall)
 - [Quick Start](#quick-start)
@@ -62,6 +63,8 @@ Or target a specific project directory:
 | Option | Short | Description | Default |
 |--------|-------|-------------|---------|
 | `--stack STACK` | | Project type (see [Stack types](#stack-types) below) | `auto` |
+| `--agent-platform LIST` | | Agent platform(s): `claude`, `gemini`, `codex`, `auto` (comma-separated) | `claude` |
+| `--enable-experimental-subagents` | | Enable Gemini subagent scaffolding (`.gemini/agents/`) | `false` |
 | `--db-name NAME` | `-d` | PostgreSQL database name (fullstack/backend only) | `myapp` |
 | `--db-port PORT` | `-p` | PostgreSQL port (fullstack/backend only) | `5432` |
 | `--skip-install` | `-s` | Generate config files only — skip npm/pip dependency installs | `false` |
@@ -95,11 +98,24 @@ The script tailors its output based on your project's stack. It auto-detects by 
 
 # Config files only — don't install linters/formatters
 ./claude-code-bootstrap.sh --skip-install
+
+# Platform selection
+./claude-code-bootstrap.sh --agent-platform claude
+./claude-code-bootstrap.sh --agent-platform gemini
+./claude-code-bootstrap.sh --agent-platform codex
+./claude-code-bootstrap.sh --agent-platform claude,codex
 ```
+
+### Agent platform selection
+
+- `claude` scaffolds full BMAD + quality-gate agents, hooks, and `/project-help` command.
+- `gemini` scaffolds `GEMINI.md` and `.gemini/commands/project-help.toml`.
+- `codex` scaffolds `AGENTS.md` and `.agents/skills/project-help/SKILL.md`.
+- `auto` inspects existing files and selects matching platform(s).
 
 ### What gets created
 
-After running the script, your project will have:
+After running the script with `--agent-platform claude`, your project will have:
 
 ```
 your-project/
@@ -127,6 +143,11 @@ your-project/
         └── backend/database.md         # SQLAlchemy 2.0, Alembic rules
 ```
 
+Additional files by platform:
+- `gemini`: `GEMINI.md`, `.gemini/commands/project-help.toml`, `docs/help/gemini.md`
+- `codex`: `AGENTS.md`, `.agents/skills/project-help/SKILL.md`, `docs/help/codex.md`
+- `claude`: `docs/help/claude.md` and `.claude/commands/project-help.md`
+
 The script also installs tooling dependencies (unless `--skip-install`):
 - **Frontend**: ESLint, Prettier
 - **Backend**: Ruff, Bandit, pip-audit
@@ -151,7 +172,7 @@ The script also installs tooling dependencies (unless `--skip-install`):
 ./claude-code-bootstrap.sh --uninstall ./my-project
 ```
 
-Uninstall removes all generated files (`CLAUDE.md`, `.claude/`, `.mcp.json`) and cleans up empty directories. It does **not** uninstall packages (eslint, ruff, bandit, etc.) — remove those manually if needed.
+Uninstall removes generated files (`CLAUDE.md`, `.claude/`, `GEMINI.md`, `.gemini/`, `AGENTS.md`, `.agents/`, `.mcp.json`) and cleans up empty directories. It does **not** uninstall packages (eslint, ruff, bandit, etc.) — remove those manually if needed.
 
 ---
 
@@ -164,7 +185,10 @@ cd your-project
 claude
 ```
 
-That's it. PostToolUse hooks auto-format and lint every file edit. Use `/project-help` for a quick reference of all agents and commands.
+That's it. PostToolUse hooks auto-format and lint every file edit (Claude platform). Use active help per product:
+- Claude: `/project-help`
+- Gemini: `/project-help`
+- Codex: `$project-help`
 
 You now have access to several agents you can invoke on demand. Try one:
 

@@ -4,7 +4,7 @@
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-A single bash script that scaffolds [Claude Code](https://docs.anthropic.com/en/docs/claude-code) best practices into any **Next.js + TailwindCSS + shadcn/ui + motion.dev** frontend with **Python/FastAPI/PostgreSQL** backend project.
+A single bash script that scaffolds [Claude Code](https://docs.anthropic.com/en/docs/claude-code) best practices and can also scaffold Gemini/Codex project help entrypoints for multi-agent setups.
 
 Based on the patterns from *The Definitive Guide to Automated Development Workflows with Claude Code*.
 
@@ -72,7 +72,7 @@ analyst → pm → architect → scrum-master → start coding
 
 Each agent is dialogue-based (interview → draft → confirm → write) and checks for prerequisite files before running. None of them write code — they produce documentation only.
 
-Use `/project-help` within a Claude session for a full reference of all agents and commands.
+Use `/project-help` within Claude or Gemini sessions, and `$project-help` in Codex, to get help for the active product.
 
 ## How the hooks pipeline works
 
@@ -110,7 +110,7 @@ sequenceDiagram
     end
 ```
 
-## Directory structure created
+## Directory structure created (Claude platform)
 
 ```
 your-project/
@@ -150,6 +150,17 @@ your-project/
     └── CLAUDE.md                          # Backend-specific conventions
 ```
 
+When `--agent-platform` includes other providers, these are also created:
+
+```text
+your-project/
+├── GEMINI.md                              # Gemini project context
+├── .gemini/commands/project-help.toml     # Gemini /project-help command
+├── AGENTS.md                              # Codex project instructions
+├── .agents/skills/project-help/SKILL.md   # Codex $project-help skill
+└── docs/help/{claude,gemini,codex}.md     # Provider-specific help docs
+```
+
 ## Usage
 
 ```bash
@@ -161,6 +172,12 @@ your-project/
 ./claude-code-bootstrap.sh --stack frontend ./my-nextjs-app
 ./claude-code-bootstrap.sh --stack backend ./my-api
 ./claude-code-bootstrap.sh --stack generic ./my-cli-tool
+
+# Select agent platform(s)
+./claude-code-bootstrap.sh --agent-platform claude
+./claude-code-bootstrap.sh --agent-platform codex
+./claude-code-bootstrap.sh --agent-platform claude,codex
+./claude-code-bootstrap.sh --agent-platform gemini --enable-experimental-subagents
 
 # Custom database name and port (fullstack/backend only)
 ./claude-code-bootstrap.sh -d production_db -p 5433
@@ -177,6 +194,8 @@ your-project/
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--stack` | Project type: `fullstack`, `frontend`, `backend`, `generic`, `auto` | `auto` |
+| `--agent-platform` | Target platform(s): `claude`, `gemini`, `codex`, `auto` (comma-separated supported) | `claude` |
+| `--enable-experimental-subagents` | Enables Gemini subagent scaffolding (`.gemini/agents/`) | `false` |
 | `-d, --db-name` | PostgreSQL database name for MCP config | `myapp` |
 | `-p, --db-port` | PostgreSQL port for MCP config | `5432` |
 | `-s, --skip-install` | Skip installing npm/pip dependencies | `false` |
@@ -192,6 +211,14 @@ your-project/
 | **backend** | Backend CLAUDE.md + rules, PostgreSQL MCP, Ruff hooks |
 | **generic** | Root CLAUDE.md (with TODOs), security rules, ship + qa agents, auto agents, secrets hooks, Context7 MCP |
 | **auto** | Detects from project files (`package.json`, `pyproject.toml`, etc.) — falls back to `generic` |
+
+### Agent platforms
+
+| Platform | What gets scaffolded | Notes |
+|----------|----------------------|-------|
+| `claude` | `CLAUDE.md`, `.claude/agents`, `.claude/commands/project-help.md`, hooks, rules | Full BMAD + quality-gate scaffolding |
+| `gemini` | `GEMINI.md`, `.gemini/commands/project-help.toml` | Subagents are optional and experimental |
+| `codex` | `AGENTS.md`, `.agents/skills/project-help/SKILL.md` | Uses skill-based project help |
 
 ## What gets installed
 
@@ -393,16 +420,17 @@ Remove all files created by the bootstrap script:
 ./claude-code-bootstrap.sh --uninstall ./my-project
 ```
 
-This removes all generated files (`CLAUDE.md`, `.claude/`, `.mcp.json`) and cleans up empty directories. It does **not** uninstall packages (eslint, ruff, bandit, etc.) — remove those manually if needed.
+This removes generated files (`CLAUDE.md`, `.claude/`, `GEMINI.md`, `.gemini/`, `AGENTS.md`, `.agents/`, `.mcp.json`) and cleans up empty directories. It does **not** uninstall packages (eslint, ruff, bandit, etc.) — remove those manually if needed.
 
 ## Customization
 
 After running the script, you should:
 
-1. **Edit `CLAUDE.md`** — Replace the generic project structure with your actual directory layout and commands.
-2. **Review `.claude/settings.json`** — Adjust hook commands if your lint/format tools differ.
-3. **Add GitHub MCP** — Add your GitHub PAT to `.mcp.json` if you want PR/issue integration.
-4. **Add personal overrides** — Create `.claude/settings.local.json` (gitignored) for personal preferences.
+1. **Edit provider context files** — `CLAUDE.md`, `GEMINI.md`, and/or `AGENTS.md` based on selected platforms.
+2. **Review provider help entrypoints** — `.claude/commands/project-help.md`, `.gemini/commands/project-help.toml`, `.agents/skills/project-help/SKILL.md`.
+3. **Review `.claude/settings.json`** — Adjust hook commands if Claude hooks are enabled for your stack.
+4. **Add GitHub MCP** — Add your GitHub PAT to `.mcp.json` if you want PR/issue integration.
+5. **Add personal overrides** — `.claude/settings.local.json`, `.gemini/settings.local.json`, `AGENTS.local.md` are gitignored.
 
 ## Community
 
@@ -415,6 +443,8 @@ After running the script, you should:
 
 - [Claude Code Documentation](https://docs.anthropic.com/en/docs/claude-code)
 - [Claude Code Hooks](https://docs.anthropic.com/en/docs/claude-code/hooks)
+- [Gemini CLI Custom Commands](https://geminicli.com/docs/cli/custom-commands/)
+- [OpenAI Codex Skills](https://developers.openai.com/codex/skills)
 - [Agent Skills Open Standard](https://agentskills.io)
 - [Anthropic Skills Repository](https://github.com/anthropics/skills)
 - [Playwright MCP](https://github.com/microsoft/playwright-mcp)
