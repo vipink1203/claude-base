@@ -255,6 +255,101 @@ All agents run as **subagents on Sonnet/Haiku**, keeping Opus reserved for the m
 - **CLI** (`claude --agent <name>`) — starts a *new* session dedicated to that agent
 - **In-session** — ask Claude naturally within your coding session; it delegates to the subagent via the Task tool, keeping your main context intact
 
+## SDLC Pipeline
+
+The SDLC slash commands provide a structured, voice-announced pipeline from PRD to shipped code. Each phase delegates to a dedicated subagent via the Task tool, keeping the main session context clean.
+
+```
+/sdlc-implement <prd>  →  /sdlc-quality  →  /sdlc-security  →  /sdlc-docs  →  /sdlc-ship
+     Phase 1                 Phase 2            Phase 3           Phase 4         Phase 5
+  implementer agent      code-quality agent  security-auditor   doc-updater     inline (git)
+```
+
+Or run everything at once:
+```bash
+/sdlc-all docs/prd.md
+/sdlc-all "Add a health check endpoint at GET /api/health"
+```
+
+### SDLC Commands
+
+| Command | Phase | Subagent | What it does |
+|---------|-------|----------|-------------|
+| `/sdlc-implement <prd>` | 1 | `implementer` | Generates code from a PRD or inline description |
+| `/sdlc-quality` | 2 | `code-quality` | Format, lint, type check, tests with auto-fix |
+| `/sdlc-security` | 3 | `security-auditor` | Dependency audit, secrets scan, OWASP Top 10 |
+| `/sdlc-docs` | 4 | `doc-updater` | CHANGELOG, docs/, docstrings, API docs |
+| `/sdlc-ship` | 5 | _(inline)_ | Branch check, stage, conventional commit, push |
+| `/sdlc-all <prd>` | 1–5 | all of above | Full pipeline — stops on any FAIL |
+
+### SDLC Agents
+
+| Agent file | Name | Model | Role |
+|------------|------|-------|------|
+| `agents/implementer.md` | `implementer` | Sonnet | Feature implementation from spec |
+| `agents/sdlc-code-quality.md` | `code-quality` | Haiku | Lint, format, type check, test coverage |
+| `agents/sdlc-security-auditor.md` | `security-auditor` | Sonnet | Security scanning and vulnerability fixes |
+| `agents/sdlc-doc-updater.md` | `doc-updater` | Haiku | CHANGELOG, docs, and docstring updates |
+
+### SDLC Skills
+
+Reusable knowledge referenced by SDLC agents:
+
+| Skill | Purpose |
+|-------|---------|
+| `skills/code-quality-standards/` | Stack detection, fix strategy, quality gates |
+| `skills/security-checklist/` | OWASP Top 10, secret patterns, severity levels |
+| `skills/documentation-standards/` | CHANGELOG format, JSDoc, Godoc, Rustdoc |
+| `skills/git-conventions/` | Conventional commits, branch naming |
+
+### Voice Notifications
+
+The SDLC pipeline uses `voice-notify.py` to announce each phase via TTS. It falls back gracefully through providers:
+
+```
+ElevenLabs (ELEVENLABS_API_KEY) → OpenAI TTS (OPENAI_API_KEY) → pyttsx3 → system say/espeak
+```
+
+Set `ELEVENLABS_API_KEY` or `OPENAI_API_KEY` in your environment for higher-quality voices. No key required — it falls back to the system `say` command on macOS or `espeak` on Linux.
+
+Voice hooks fire on:
+- **SessionStart** — "Claude Code session started. SDLC commands ready."
+- **SubagentStop** — "Subagent task complete."
+- **Stop** — "Task complete. Ready for next command."
+
+### Pipeline flow diagram
+
+```mermaid
+graph TD
+    PRD["PRD or feature description"] --> P1
+
+    P1["Phase 1: /sdlc-implement"] --> P1A["implementer subagent\n(Sonnet)"]
+    P1A --> P1R{"Files created?"}
+    P1R -->|No| P1["Retry"]
+    P1R -->|Yes| P2
+
+    P2["Phase 2: /sdlc-quality"] --> P2A["code-quality subagent\n(Haiku)"]
+    P2A --> P2R{"PASS?"}
+    P2R -->|FAIL| STOP2["Stop — fix issues"]
+    P2R -->|PASS| P3
+
+    P3["Phase 3: /sdlc-security"] --> P3A["security-auditor subagent\n(Sonnet)"]
+    P3A --> P3R{"PASS?"}
+    P3R -->|FAIL| STOP3["Stop — review findings"]
+    P3R -->|PASS| P4
+
+    P4["Phase 4: /sdlc-docs"] --> P4A["doc-updater subagent\n(Haiku)"]
+    P4A --> P5
+
+    P5["Phase 5: /sdlc-ship"] --> GIT["git add -A\ngit commit\ngit push"]
+    GIT --> DONE["PR ready"]
+
+    style PRD fill:#7c3aed,color:#fff,stroke:none
+    style DONE fill:#16a34a,color:#fff,stroke:none
+    style STOP2 fill:#dc2626,color:#fff,stroke:none
+    style STOP3 fill:#dc2626,color:#fff,stroke:none
+```
+
 ## Hooks explained
 
 ```mermaid
