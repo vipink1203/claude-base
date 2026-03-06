@@ -45,3 +45,12 @@ Plan (BMAD agents) → Develop → code-reviewer / security-reviewer → qa agen
 ### Commands
 - `/project-help` — List all agents, hooks, and workflows
 - See `docs/help/` for provider-specific help references (Claude/Gemini/Codex)
+
+## SDLC Pipeline Commands
+Run phases individually or all at once:
+- `/sdlc-implement <prd>` — Phase 1: Implement from PRD (spawns implementer subagent)
+- `/sdlc-quality` — Phase 2: Lint, format, type check, test (spawns code-quality subagent)
+- `/sdlc-security` — Phase 3: Security audit (spawns security-auditor subagent)
+- `/sdlc-docs` — Phase 4: Update CHANGELOG, docs, docstrings (spawns doc-updater subagent)
+- `/sdlc-ship` — Phase 5: Commit and push (runs inline)
+- `/sdlc-all <prd>` — Run all 5 phases in sequence
